@@ -1,1 +1,137 @@
 @import "tailwindcss";
+
+:root {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #172033;
+  background: #f3f6fb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.mom-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  overflow: visible;
+  background: #fff;
+  color: #1e293b;
+  box-sizing: border-box;
+}
+
+.mom-content {
+  width: 100%;
+  flex: 1 0 auto;
+  --mom-table-width: 100%;
+}
+
+.mom-page .mom-table {
+  width: var(--mom-table-width, 100%) !important;
+  max-width: 100%;
+  margin-right: auto;
+  margin-left: auto;
+  table-layout: fixed;
+  border-collapse: collapse;
+  color: #243247;
+  font-size: 12px;
+  line-height: 1.28;
+}
+
+.mom-page .mom-table th,
+.mom-page .mom-table td {
+  overflow-wrap: anywhere;
+  word-break: normal;
+  vertical-align: middle;
+}
+
+.mom-page .mom-table th {
+  color: #17365d;
+  background: #dce6f1;
+}
+
+.mom-page .mom-table td.mom-label-cell,
+.mom-page .mom-table td.discussion-label {
+  color: #17365d;
+  background: #e8eef5;
+  font-weight: 700;
+}
+
+.mom-page .mom-table td.discussion-label {
+  text-align: left;
+}
+
+.mom-page .mom-table td.discussion-title {
+  color: #fff;
+  background: #17365d;
+}
+
+.mom-page .mom-page-footer {
+  position: absolute;
+  right: 0;
+  bottom: 10mm;
+  left: 0;
+  flex: none;
+}
+
+@media (max-width: 720px) {
+  .mom-page {
+    transform-origin: top left;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: #fff !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .preview-shell {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .mom-pages {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .mom-page {
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    break-after: page;
+    page-break-after: always;
+  }
+}

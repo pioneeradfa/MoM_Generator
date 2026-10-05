@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { Document, Packer, Paragraph, Table, TableRow, TableCell, WidthType, AlignmentType, TextRun, BorderStyle, ShadingType, Header, ImageRun, VerticalAlign, convertInchesToTwip } from "docx";
+import { Document, Packer, Paragraph, Table, TableRow, TableCell, WidthType, AlignmentType, TextRun, BorderStyle, ShadingType, Header, Footer, ImageRun, VerticalAlign, TableLayoutType, PageNumber, HeightRule, convertInchesToTwip, convertMillimetersToTwip, type ParagraphChild } from "docx";
 import { saveAs } from "file-saver";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -132,7 +132,17 @@ function uid() {
   return Math.random().toString(36).slice(2);
 }
 
-function cellBorder(style = BorderStyle.SINGLE, size = 4, color = "000000") {
+function safeFilePart(value: string) {
+  const safeName = value
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+    .replace(/\s+/g, "_")
+    .replace(/-+/g, "-")
+    .replace(/[. ]+$/g, "");
+  return safeName || "meeting";
+}
+
+function cellBorder(style: (typeof BorderStyle)[keyof typeof BorderStyle] = BorderStyle.SINGLE, size = 4, color = "8795A8") {
   return { style, size, color };
 }
 
@@ -143,13 +153,50 @@ const allBorders = {
   right: cellBorder(),
 };
 
+const noCellBorders = {
+  top: cellBorder(BorderStyle.NIL, 0, "FFFFFF"),
+  bottom: cellBorder(BorderStyle.NIL, 0, "FFFFFF"),
+  left: cellBorder(BorderStyle.NIL, 0, "FFFFFF"),
+  right: cellBorder(BorderStyle.NIL, 0, "FFFFFF"),
+};
+
+const noTableBorders = {
+  ...noCellBorders,
+  insideHorizontal: cellBorder(BorderStyle.NIL, 0, "FFFFFF"),
+  insideVertical: cellBorder(BorderStyle.NIL, 0, "FFFFFF"),
+};
+
+const A4_WIDTH_TWIPS = convertMillimetersToTwip(210);
+const A4_HEIGHT_TWIPS = convertMillimetersToTwip(297);
+const PAGE_LEFT_MARGIN_TWIPS = convertInchesToTwip(1.25);
+const PAGE_RIGHT_MARGIN_TWIPS = convertInchesToTwip(1);
+const PAGE_CONTENT_WIDTH_TWIPS = A4_WIDTH_TWIPS - PAGE_LEFT_MARGIN_TWIPS - PAGE_RIGHT_MARGIN_TWIPS;
+
+interface WordCellSpec {
+  text?: string;
+  paragraphs?: Paragraph[];
+  span?: number;
+  bold?: boolean;
+  italic?: boolean;
+  fill?: string;
+  color?: string;
+  fontSize?: number;
+  alignment?: (typeof AlignmentType)[keyof typeof AlignmentType];
+}
+
+interface WordRowSpec {
+  cells: WordCellSpec[];
+  repeatHeader?: boolean;
+  minHeight?: number;
+}
+
 
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [form, setForm] = useState<FormData>(defaultForm);
   const [activeTab, setActiveTab] = useState<"form" | "preview">("form");
-  const [tableScale, setTableScale] = useState(100);
+  const [tableWidth, setTableWidth] = useState(100);
   const previewRef = useRef<HTMLDivElement>(null);
   const [generating, setGenerating] = useState(false);
 
@@ -263,320 +310,394 @@ export default function App() {
 
   // ── PDF Export ──
   const exportPDF = async () => {
-    if (!previewRef.current) return;
+    const openedFromForm = activeTab === "form";
     setGenerating(true);
+
     try {
-      const pages = previewRef.current.querySelectorAll<HTMLElement>(".mom-page");
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      // The preview is intentionally mounted only on its tab. Show it for a frame
+      // before capture when PDF is requested from the form tab.
+      if (openedFromForm) {
+        setActiveTab("preview");
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      }
+
+      if (!previewRef.current) throw new Error("The document preview is not ready yet.");
+      const pages = Array.from(previewRef.current.querySelectorAll<HTMLElement>(".mom-page"));
+      if (!pages.length) throw new Error("No document pages are available to export.");
+
+      await Promise.all(
+        Array.from(previewRef.current.querySelectorAll<HTMLImageElement>("img")).map((image) =>
+          image.decode().catch(() => undefined)
+        )
+      );
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
       const pdfW = 210;
       const pdfH = 297;
 
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
+        const captureWidth = page.clientWidth || page.scrollWidth;
+        const captureHeight = Math.max(page.clientHeight, page.scrollHeight);
         const canvas = await html2canvas(page, {
-          scale: 2,
+          scale: 3,
           useCORS: true,
           backgroundColor: "#ffffff",
           logging: false,
-          width: page.scrollWidth,
-          height: page.scrollHeight,
+          width: captureWidth,
+          height: captureHeight,
+          windowWidth: Math.max(document.documentElement.clientWidth, captureWidth),
+          onclone: (clonedDocument) => {
+            clonedDocument.querySelectorAll<HTMLElement>(".mom-page").forEach((clonedPage) => {
+              clonedPage.style.boxShadow = "none";
+              clonedPage.style.borderRadius = "0";
+            });
+          },
         });
-        const imgData = canvas.toDataURL("image/jpeg", 0.95);
-        const canvasW = canvas.width;
-        const canvasH = canvas.height;
-        const ratio = canvasH / canvasW;
-        const imgW = pdfW;
-        const imgH = imgW * ratio;
+        const imgData = canvas.toDataURL("image/png");
+        const fitScale = Math.min(pdfW / canvas.width, pdfH / canvas.height);
+        const imgW = canvas.width * fitScale;
+        const imgH = canvas.height * fitScale;
 
-        if (i > 0) pdf.addPage();
-        // Always place from top (y=0), scale to page width
-        pdf.addImage(imgData, "JPEG", 0, 0, imgW, Math.min(imgH, pdfH));
+        if (i > 0) pdf.addPage("a4", "portrait");
+        // Fit the full page to A4 instead of cropping overflow at the bottom.
+        pdf.addImage(imgData, "PNG", (pdfW - imgW) / 2, (pdfH - imgH) / 2, imgW, imgH, undefined, "FAST");
       }
-      pdf.save(`MoM_${form.meetingRef || "meeting"}.pdf`);
-    } catch (e) {
-      console.error(e);
-      alert("PDF generation failed. Please try again.");
+
+      pdf.save(`MoM_${safeFilePart(form.meetingRef)}.pdf`);
+    } catch (error) {
+      console.error(error);
+      window.alert(`PDF generation failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      if (openedFromForm) setActiveTab("form");
+      setGenerating(false);
     }
-    setGenerating(false);
   };
 
   // ── Word Export ──
   const exportWord = async () => {
     setGenerating(true);
     try {
-      // Load logos as base64
-      const toBase64 = async (url: string): Promise<Uint8Array> => {
-        const res = await fetch(url);
-        const buf = await res.arrayBuffer();
-        return new Uint8Array(buf);
+      const toBytes = async (url: string): Promise<Uint8Array | null> => {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) return null;
+          return new Uint8Array(await response.arrayBuffer());
+        } catch {
+          return null;
+        }
       };
 
-      let logo1Data: Uint8Array | null = null;
-      let logo2Data: Uint8Array | null = null;
-      try { logo1Data = await toBase64("/logo1.png"); } catch {}
-      try { logo2Data = await toBase64("/logo2.png"); } catch {}
-
-      const makeLogoImg = (data: Uint8Array, w: number, h: number) =>
-        new ImageRun({ data, transformation: { width: w, height: h }, type: "png" });
-
-      const headerParagraphs = [
+      const [logo1Data, logo2Data] = await Promise.all([toBytes("/logo1.png"), toBytes("/logo2.png")]);
+      const headerParagraph = (children: ParagraphChild[], alignment = AlignmentType.CENTER) =>
         new Paragraph({
-          children: [
-            ...(logo1Data ? [makeLogoImg(logo1Data, 70, 50)] : []),
-            new TextRun({ text: "        " }),
-            new TextRun({ text: "Intelligent Systems (IS) Focus Group", bold: true, size: 22 }),
-            new TextRun({ text: "        " }),
-            ...(logo2Data ? [makeLogoImg(logo2Data, 70, 50)] : []),
-          ],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 40 },
-        }),
-        new Paragraph({
-          children: [new TextRun({ text: "EMET, Abu Dhabi Polytechnic", bold: true, size: 20 })],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 40 },
-        }),
-        new Paragraph({
-          children: [new TextRun({ text: form.semesterDisplay, bold: true, size: 20 })],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 40 },
-        }),
-        new Paragraph({
-          children: [new TextRun({ text: `Meeting #${form.meetingNumberDisplay} Minutes`, bold: true, size: 20 })],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 120 },
-        }),
-      ];
+          children,
+          alignment,
+          spacing: { before: 0, after: 0 },
+        });
 
-      const shading = { type: ShadingType.SOLID, color: "D3D3D3", fill: "D3D3D3" };
+      const logoParagraph = (data: Uint8Array | null, width: number, height: number) =>
+        headerParagraph(data ? [new ImageRun({ data, transformation: { width, height }, type: "png" })] : [new TextRun({ text: "" })]);
 
-      const mkCell = (text: string, opts: {
-        bold?: boolean; shade?: boolean; colSpan?: number; rowSpan?: number;
-        widthPct?: number; fontSize?: number; vAlign?: typeof VerticalAlign.CENTER;
-        borders?: object; italic?: boolean;
-      } = {}) => {
-        const { bold, shade, colSpan, rowSpan, widthPct, fontSize = 18, vAlign = VerticalAlign.CENTER, borders = allBorders, italic } = opts;
-        return new TableCell({
-          columnSpan: colSpan,
-          rowSpan,
-          verticalAlign: vAlign,
-          shading: shade ? shading : undefined,
-          borders,
-          width: widthPct ? { size: widthPct * 100, type: WidthType.PERCENTAGE } : undefined,
-          children: [
-            new Paragraph({
-              children: [new TextRun({ text, bold, size: fontSize, italics: italic })],
-              alignment: AlignmentType.LEFT,
-              spacing: { before: 60, after: 60 },
-            }),
-          ],
+      const headerRows: WordRowSpec[] = [{
+        cells: [
+          { paragraphs: [logoParagraph(logo1Data, 66, 46)], alignment: AlignmentType.CENTER },
+          {
+            paragraphs: [
+              headerParagraph([new TextRun({ text: "Intelligent Systems (IS) Focus Group", bold: true, size: 19, font: "Arial", color: "17365D" })]),
+              headerParagraph([new TextRun({ text: "EMET, Abu Dhabi Polytechnic", bold: true, size: 18, font: "Arial", color: "17365D" })]),
+              headerParagraph([new TextRun({ text: form.semesterDisplay, bold: true, size: 18, font: "Arial", color: "17365D" })]),
+              headerParagraph([new TextRun({ text: `Meeting #${form.meetingNumberDisplay} Minutes`, bold: true, size: 18, font: "Arial", color: "17365D" })]),
+            ],
+            alignment: AlignmentType.CENTER,
+          },
+          { paragraphs: [logoParagraph(logo2Data, 46, 46)], alignment: AlignmentType.CENTER },
+        ],
+      }];
+
+      const makeFixedTable = (
+        columnWeights: number[],
+        rowSpecs: WordRowSpec[],
+        options: { widthPercent?: number; borderless?: boolean } = {}
+      ) => {
+        const widthPercent = Math.max(70, Math.min(100, options.widthPercent ?? tableWidth));
+        const tableTwipsWidth = Math.round(PAGE_CONTENT_WIDTH_TWIPS * widthPercent / 100);
+        const weightTotal = columnWeights.reduce((total, weight) => total + weight, 0);
+        let remainingWidth = tableTwipsWidth;
+        const columnWidths = columnWeights.map((weight, index) => {
+          const width = index === columnWeights.length - 1
+            ? remainingWidth
+            : Math.round(tableTwipsWidth * weight / weightTotal);
+          remainingWidth -= width;
+          return width;
+        });
+        const borders = options.borderless ? noCellBorders : allBorders;
+
+        const makeCell = (cell: WordCellSpec, rowIndex: number, startColumn: number) => {
+          const span = cell.span ?? 1;
+          const endColumn = startColumn + span;
+          if (span < 1 || endColumn > columnWidths.length) {
+            throw new Error(`Invalid table cell span in row ${rowIndex + 1}.`);
+          }
+          const width = columnWidths.slice(startColumn, endColumn).reduce((total, value) => total + value, 0);
+
+          const paragraphs = cell.paragraphs ?? (() => {
+            const lines = (cell.text ?? "").split(/\r?\n/);
+            const children: ParagraphChild[] = [];
+            lines.forEach((line, index) => {
+              if (index > 0) children.push(new TextRun({ break: 1 }));
+              children.push(new TextRun({
+                text: line || "\u00a0",
+                bold: cell.bold,
+                italics: cell.italic,
+                size: cell.fontSize ?? 18,
+                font: "Arial",
+                color: cell.color ?? "243247",
+              }));
+            });
+            return [new Paragraph({
+              children,
+              alignment: cell.alignment ?? AlignmentType.LEFT,
+              spacing: { before: 0, after: 0 },
+              keepLines: true,
+            })];
+          })();
+
+          return { cell: new TableCell({
+            columnSpan: span > 1 ? span : undefined,
+            width: { size: width, type: WidthType.DXA },
+            verticalAlign: VerticalAlign.CENTER,
+            shading: cell.fill ? { type: ShadingType.SOLID, color: cell.fill, fill: cell.fill } : undefined,
+            borders,
+            margins: { top: 65, bottom: 65, left: 85, right: 85, marginUnitType: WidthType.DXA },
+            children: paragraphs,
+          }), endColumn };
+        };
+
+        const rows = rowSpecs.map((row, rowIndex) => {
+          let columnCursor = 0;
+          const cells = row.cells.map((cell) => {
+            const result = makeCell(cell, rowIndex, columnCursor);
+            columnCursor = result.endColumn;
+            return result.cell;
+          });
+          if (columnCursor !== columnWidths.length) {
+            throw new Error(`Table row ${rowIndex + 1} uses ${columnCursor} of ${columnWidths.length} columns.`);
+          }
+          return new TableRow({
+            children: cells,
+            cantSplit: true,
+            tableHeader: row.repeatHeader,
+            height: row.minHeight ? { value: row.minHeight, rule: HeightRule.ATLEAST } : undefined,
+          });
+        });
+
+        return new Table({
+          rows,
+          width: { size: tableTwipsWidth, type: WidthType.DXA },
+          columnWidths,
+          layout: TableLayoutType.FIXED,
+          alignment: AlignmentType.CENTER,
+          borders: options.borderless ? noTableBorders : { ...allBorders, insideHorizontal: cellBorder(), insideVertical: cellBorder() },
+          margins: { top: 65, bottom: 65, left: 85, right: 85, marginUnitType: WidthType.DXA },
         });
       };
 
-      // Page 1 tables
-      const infoTable = new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: [
-          new TableRow({ children: [mkCell("Meeting Title:", { bold: true, shade: true, widthPct: 18 }), mkCell(form.meetingTitle, { colSpan: 2, widthPct: 32 }), mkCell("Meeting Ref:", { bold: true, shade: true, widthPct: 18 }), mkCell(form.meetingRef, { widthPct: 32 })] }),
-          new TableRow({ children: [mkCell("Date:", { bold: true, shade: true }), mkCell(form.date, { colSpan: 1 }), mkCell(`Start: ${form.startTime}   End: ${form.endTime}`, { colSpan: 2 }), mkCell("", {})] }),
-          new TableRow({ children: [mkCell("Semester:", { bold: true, shade: true }), mkCell(form.semester, { colSpan: 2 }), mkCell(`Minutes #: ${form.minutesNo}`, { colSpan: 2 })] }),
-          new TableRow({ children: [mkCell("Place:", { bold: true, shade: true }), mkCell(form.place, { colSpan: 4 })] }),
-          new TableRow({ children: [mkCell("Facilitator:", { bold: true, shade: true }), mkCell(form.facilitator, { colSpan: 2 }), mkCell("Minutes by:", { bold: true, shade: true }), mkCell(form.minutesBy, {})] }),
-          new TableRow({ children: [mkCell("Attendees:", { bold: true, shade: true }), mkCell(form.attendees, { colSpan: 4 })] }),
-          new TableRow({ children: [mkCell("Name", { bold: true, shade: true }), mkCell("Members / Guest", { bold: true, shade: true, colSpan: 2 }), mkCell("Endorsement\n(Approve or Need Clarification)", { bold: true, shade: true, colSpan: 2 })] }),
-          ...form.attendeeRows.map((r) => new TableRow({ children: [mkCell(r.name), mkCell(r.role, { colSpan: 2 }), mkCell(r.endorsement, { colSpan: 2 })] })),
-          new TableRow({ children: [mkCell("Excused:", { bold: true, shade: true, italic: true }), mkCell(form.excused, { colSpan: 4 })] }),
-        ],
+      const label = (
+        text: string,
+        span = 1,
+        alignment: (typeof AlignmentType)[keyof typeof AlignmentType] = AlignmentType.CENTER,
+      ): WordCellSpec => ({ text, span, bold: true, fill: "E8EEF5", color: "17365D", alignment });
+      const headingCell = (text: string, span = 1): WordCellSpec => ({
+        text,
+        span,
+        bold: true,
+        fill: "DCE6F1",
+        color: "17365D",
+        alignment: AlignmentType.CENTER,
       });
+      const bodyCell = (text: string, span = 1): WordCellSpec => ({ text, span });
+      const makeHeading = (text: string, pageBreakBefore = false) => new Paragraph({
+        children: [new TextRun({ text, bold: true, size: 22, font: "Arial", color: "17365D" })],
+        spacing: { before: 70, after: 90 },
+        keepNext: true,
+        pageBreakBefore,
+      });
+      const spacer = (after = 140) => new Paragraph({ children: [], spacing: { after } });
 
-      const agendaHeaderRow = new TableRow({
-        children: [
-          mkCell("Item No.", { bold: true, shade: true, widthPct: 15 }),
-          mkCell("Subject (Standing Agenda)", { bold: true, shade: true, widthPct: 85 }),
-        ],
-      });
-      const agendaTable = new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: [
-          agendaHeaderRow,
-          ...form.agendaItems.map((item, i) =>
-            new TableRow({
-              children: [mkCell(`${i + 1}.`, { widthPct: 15 }), mkCell(item.subject, { widthPct: 85 })],
-            })
-          ),
-        ],
-      });
+      // Page 1: one six-column grid is used for every information row. Spans
+      // always add up to six, so Word never has to guess a different table layout.
+      const infoRows: WordRowSpec[] = [
+        { cells: [label("Meeting Title:"), bodyCell(form.meetingTitle, 2), label("Meeting Ref:"), bodyCell(form.meetingRef, 2)] },
+        { cells: [label("Date:"), bodyCell(form.date), bodyCell(`Start: ${form.startTime}`, 2), bodyCell(`End: ${form.endTime}`, 2)] },
+        { cells: [label("Semester:"), bodyCell(form.semester, 2), label("Minutes #:"), bodyCell(form.minutesNo, 2)] },
+        { cells: [label("Place:"), bodyCell(form.place, 5)] },
+        { cells: [label("Facilitator:"), bodyCell(form.facilitator, 2), label("Minutes by:"), bodyCell(form.minutesBy, 2)] },
+        { cells: [label("Attendees:"), bodyCell(form.attendees, 5)] },
+        { repeatHeader: true, cells: [headingCell("Name", 2), headingCell("Members / Guest", 2), headingCell("Endorsement\n(Approve or Need Clarification)", 2)] },
+        ...form.attendeeRows.map((row) => ({ cells: [bodyCell(row.name, 2), bodyCell(row.role, 2), bodyCell(row.endorsement, 2)] })),
+        { cells: [label("Excused:"), bodyCell(form.excused, 5)] },
+      ];
+      const infoTable = makeFixedTable([18, 16, 16, 17, 16, 17], infoRows);
 
-      // Page 2
-      const taskHeaderRow = new TableRow({
-        children: [
-          mkCell("Items Discussed", { bold: true, shade: true, widthPct: 75 }),
-          mkCell("Task Status", { bold: true, shade: true, widthPct: 25 }),
-        ],
-      });
-      const taskTable = new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: [
-          taskHeaderRow,
-          ...form.taskStatusRows.map((r) =>
-            new TableRow({ children: [mkCell(r.item, { widthPct: 75 }), mkCell(r.status, { widthPct: 25 })] })
-          ),
-        ],
-      });
+      const agendaTable = makeFixedTable([12, 88], [
+        { repeatHeader: true, cells: [headingCell("Item No."), headingCell("Subject (Standing Agenda)")] },
+        ...form.agendaItems.map((item, index) => ({ cells: [bodyCell(`${index + 1}.`), bodyCell(item.subject)] })),
+      ]);
 
-      const makeDiscussionTable = (dp: DiscussionPoint) => {
-        const rows: TableRow[] = [
-          new TableRow({
-            children: [
-              new TableCell({
-                columnSpan: 3,
-                shading,
-                borders: allBorders,
-                children: [new Paragraph({ children: [new TextRun({ text: dp.title, bold: true, size: 18 })], alignment: AlignmentType.CENTER, spacing: { before: 60, after: 60 } })],
-              }),
-            ],
-          }),
-          new TableRow({ children: [mkCell("Discussion:", { bold: true, colSpan: 3 })] }),
-          new TableRow({ children: [new TableCell({ columnSpan: 3, borders: allBorders, children: [new Paragraph({ children: [new TextRun({ text: dp.discussion, size: 18 })], spacing: { before: 120, after: 240 } })] })] }),
-          new TableRow({ children: [mkCell("Decision:", { bold: true, colSpan: 3 })] }),
-          new TableRow({ children: [new TableCell({ columnSpan: 3, borders: allBorders, children: [new Paragraph({ children: [new TextRun({ text: dp.decision, size: 18 })], spacing: { before: 120, after: 240 } })] })] }),
-          new TableRow({ children: [mkCell("Task to be Completed:", { bold: true, colSpan: 3 })] }),
-          new TableRow({ children: [mkCell("Action", { bold: true, shade: true, widthPct: 60 }), mkCell("Assignee", { bold: true, shade: true, widthPct: 20 }), mkCell("Deadline", { bold: true, shade: true, widthPct: 20 })] }),
-          ...dp.actions.map((a) =>
-            new TableRow({ children: [mkCell(a.action, { widthPct: 60 }), mkCell(a.assignee, { widthPct: 20 }), mkCell(a.deadline, { widthPct: 20 })] })
-          ),
+      // Page 2: task status and discussion tables use fixed, reusable grids.
+      const taskTable = makeFixedTable([75, 25], [
+        { repeatHeader: true, cells: [headingCell("Items Discussed"), headingCell("Task Status")] },
+        ...form.taskStatusRows.map((row) => ({ cells: [bodyCell(row.item), bodyCell(row.status)] })),
+      ]);
+
+      const makeDiscussionTable = (point: DiscussionPoint) => {
+        const rows: WordRowSpec[] = [
+          { cells: [{ text: point.title || "Discussion point", span: 3, bold: true, fill: "17365D", color: "FFFFFF", alignment: AlignmentType.CENTER }] },
+          { cells: [label("Discussion:", 3)] },
+          { minHeight: convertMillimetersToTwip(13), cells: [bodyCell(point.discussion || " ", 3)] },
+          { cells: [label("Decision:", 3, AlignmentType.LEFT)] },
+          { minHeight: convertMillimetersToTwip(10.6), cells: [bodyCell(point.decision || " ", 3)] },
+          { cells: [label("Task to be Completed:", 3, AlignmentType.LEFT)] },
+          { repeatHeader: true, cells: [headingCell("Action"), headingCell("Assignee"), headingCell("Deadline")] },
+          ...point.actions.map((action) => ({ cells: [bodyCell(action.action), bodyCell(action.assignee), bodyCell(action.deadline)] })),
         ];
-        return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows });
+        return makeFixedTable([60, 20, 20], rows);
       };
 
-      // Page 3
-      const summaryBullets = form.meetingSummary.split("\n").filter(Boolean).map(
-        (line) => new Paragraph({ children: [new TextRun({ text: `• ${line}`, size: 18 })], spacing: { after: 60 } })
+      // Page 3: summary, appendices, approval, and distribution.
+      const appendixTable = makeFixedTable([20, 80], [
+        { repeatHeader: true, cells: [headingCell("No."), headingCell("Title of Document / Shared Document Links")] },
+        ...form.appendixRows.map((row) => ({ cells: [bodyCell(row.no), bodyCell(row.title)] })),
+      ]);
+
+      const approvalTable = makeFixedTable([20, 30, 25, 25], [{
+        cells: [label("Date:"), bodyCell(form.approvalDate), label("Signature of Chair:"), bodyCell(" ")],
+      }]);
+
+      const distributionTable = makeFixedTable([50, 50], [{
+        cells: [bodyCell(`• ${form.distribution}`), bodyCell(`Others: ${form.distributionOthers}`)],
+      }]);
+
+      const noteTable = makeFixedTable([100], [{
+        cells: [{
+          fill: "F8FAFC",
+          paragraphs: [new Paragraph({
+            children: [
+              new TextRun({ text: "NOTE: ", bold: true, size: 16, font: "Arial", color: "17365D" }),
+              new TextRun({ text: "Attendees are requested to communicate to the author (MoM) any conditions, corrections, or amendments to these minutes. In the event no communication is received within 5 working days of receipt, the minutes are considered approved as written.", size: 16, font: "Arial", color: "475569" }),
+            ],
+            spacing: { before: 0, after: 0 },
+            keepLines: true,
+          })],
+        }],
+      }]);
+
+      const summaryParagraphs = form.meetingSummary.split("\n").map((line) => line.trim()).filter(Boolean).map((line) =>
+        new Paragraph({
+          children: [new TextRun({ text: `• ${line}`, size: 18, font: "Arial", color: "243247" })],
+          spacing: { after: 55 },
+          keepLines: true,
+        })
       );
 
-      const appendixTable = new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: [
-          new TableRow({ children: [mkCell("No.", { bold: true, shade: true, widthPct: 20 }), mkCell("Title of Document / Shared Document Links", { bold: true, shade: true, widthPct: 80 })] }),
-          ...form.appendixRows.map((r) =>
-            new TableRow({ children: [mkCell(r.no, { widthPct: 20 }), mkCell(r.title, { widthPct: 80 })] })
-          ),
-        ],
-      });
-
-      const approvalTable = new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: [
-          new TableRow({
-            children: [
-              mkCell("Date:", { bold: true, shade: true, widthPct: 20 }),
-              mkCell(form.approvalDate, { widthPct: 30 }),
-              mkCell("Signature of Chair:", { bold: true, shade: true, widthPct: 25 }),
-              mkCell("", { widthPct: 25 }),
-            ],
-          }),
-        ],
-      });
-
-      const distTable = new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: [
-          new TableRow({
-            children: [
-              mkCell(`• ${form.distribution}`, { widthPct: 50 }),
-              mkCell(`Others: ${form.distributionOthers}`, { widthPct: 50 }),
-            ],
-          }),
-        ],
-      });
-
-      const sp = (n = 120) => new Paragraph({ children: [], spacing: { after: n } });
-
       const doc = new Document({
-        sections: [
-          {
-            properties: {
-              page: {
-                margin: {
-                  top: convertInchesToTwip(1),
-                  right: convertInchesToTwip(1),
-                  bottom: convertInchesToTwip(1),
-                  left: convertInchesToTwip(1.25),
-                },
+        title: `Minutes of Meeting - ${form.meetingRef || "Meeting"}`,
+        creator: "Minutes of Meeting Generator",
+        sections: [{
+          properties: {
+            page: {
+              size: { width: A4_WIDTH_TWIPS, height: A4_HEIGHT_TWIPS },
+              margin: {
+                top: convertInchesToTwip(1),
+                right: PAGE_RIGHT_MARGIN_TWIPS,
+                bottom: convertInchesToTwip(1),
+                left: PAGE_LEFT_MARGIN_TWIPS,
+                header: convertInchesToTwip(0.25),
+                footer: convertInchesToTwip(0.4),
               },
             },
-            headers: {
-              default: new Header({
-                children: headerParagraphs,
-              }),
-            },
-            children: [
-              // Page 1
-              infoTable,
-              sp(160),
-              new Paragraph({ children: [new TextRun({ text: "Agenda:", bold: true, size: 20 })], spacing: { after: 80 } }),
-              agendaTable,
-              sp(200),
-              // Page 2
-              new Paragraph({ children: [new TextRun({ text: `Task Status for Previous Meeting: ${form.taskStatusRef}`, bold: true, size: 20 })], spacing: { after: 80 }, pageBreakBefore: true }),
-              taskTable,
-              sp(160),
-              new Paragraph({ children: [new TextRun({ text: "Discussion Points:", bold: true, size: 20 })], spacing: { after: 80 } }),
-              ...form.discussionPoints.flatMap((dp) => [makeDiscussionTable(dp), sp(160)]),
-              // Page 3
-              new Paragraph({ children: [], pageBreakBefore: true }),
-              new Paragraph({ children: [new TextRun({ text: "Meeting Summary:", bold: true, size: 20 })], spacing: { after: 80 } }),
-              ...summaryBullets,
-              sp(160),
-              new Paragraph({ children: [new TextRun({ text: "Attached Documents (Appendix):", bold: true, size: 20 })], spacing: { after: 80 } }),
-              appendixTable,
-              sp(160),
-              new Paragraph({
-                children: [
-                  new TextRun({ text: "Approval ", bold: true, size: 18 }),
-                  new TextRun({ text: "(The chair of the meeting confirms with his signature that the discussions and decisions of the meeting were correctly recorded)", size: 16, italics: true }),
-                ],
-                spacing: { after: 80 },
-              }),
-              approvalTable,
-              sp(160),
-              new Paragraph({ children: [new TextRun({ text: "Distribution", bold: true, size: 20 })], spacing: { after: 80 } }),
-              distTable,
-              sp(160),
-              new Paragraph({
-                children: [
-                  new TextRun({ text: "NOTE: ", bold: true, size: 18 }),
-                  new TextRun({ text: "Attendees are requested to communicate to the author (MoM) any conditions, corrections, or amendments to these minutes. In the event no communication is received within 5 working days of receipt, the minutes are considered approved as written.", size: 16 }),
-                ],
-                spacing: { after: 80 },
-              }),
-            ],
           },
-        ],
+          headers: {
+            default: new Header({
+              children: [makeFixedTable([18, 64, 18], headerRows, { widthPercent: 100, borderless: true })],
+            }),
+          },
+          footers: {
+            default: new Footer({
+              children: [new Paragraph({
+                children: [new TextRun({ text: "Page ", size: 16, font: "Arial", color: "64748B" }), new TextRun({ children: [PageNumber.CURRENT], size: 16, font: "Arial", color: "64748B" })],
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 0, after: 0 },
+              })],
+            }),
+          },
+          children: [
+            infoTable,
+            spacer(160),
+            makeHeading("Agenda:"),
+            agendaTable,
+            makeHeading(`Task Status for Previous Meeting: ${form.taskStatusRef}`, true),
+            taskTable,
+            spacer(130),
+            makeHeading("Discussion Points:"),
+            ...form.discussionPoints.flatMap((point) => [makeDiscussionTable(point), spacer(140)]),
+            makeHeading("Meeting Summary:", true),
+            ...summaryParagraphs,
+            spacer(120),
+            makeHeading("Attached Documents (Appendix):"),
+            appendixTable,
+            spacer(130),
+            new Paragraph({
+              children: [
+                new TextRun({ text: "Approval ", bold: true, size: 18, font: "Arial", color: "17365D" }),
+                new TextRun({ text: "(The chair of the meeting confirms with his signature that the discussions and decisions of the meeting were correctly recorded)", size: 16, italics: true, font: "Arial", color: "475569" }),
+              ],
+              spacing: { before: 60, after: 80 },
+            }),
+            approvalTable,
+            spacer(120),
+            makeHeading("Distribution"),
+            distributionTable,
+            spacer(100),
+            noteTable,
+          ],
+        }],
       });
 
       const blob = await Packer.toBlob(doc);
-      saveAs(blob, `MoM_${form.meetingRef || "meeting"}.docx`);
-    } catch (e) {
-      console.error(e);
-      alert("Word generation failed: " + (e instanceof Error ? e.message : String(e)));
+      saveAs(blob, `MoM_${safeFilePart(form.meetingRef)}.docx`);
+    } catch (error) {
+      console.error(error);
+      window.alert(`Word generation failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setGenerating(false);
     }
-    setGenerating(false);
   };
 
   // ─── Preview Component ────────────────────────────────────────────────────
-  const scale = tableScale / 100;
+  const tableWidthStyle = { "--mom-table-width": `${tableWidth}%` } as React.CSSProperties;
+  const pageStyle: React.CSSProperties = {
+    width: "210mm",
+    height: "297mm",
+    minHeight: "297mm",
+    padding: "8mm 25.4mm 25.4mm 31.75mm",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    fontFamily: "Arial, sans-serif",
+  };
 
   const PreviewHeader = () => (
-    <div className="flex items-center justify-between mb-3 px-2">
+    <div className="flex items-center justify-between mb-1 px-1">
       <div className="flex items-center gap-3">
         <img src="/logo1.png" alt="Polytechnic" className="h-14 object-contain" />
       </div>
       <div className="text-center flex-1">
-        <div className="font-bold text-sm">Intelligent Systems (IS) Focus Group</div>
-        <div className="font-bold text-sm">EMET, Abu Dhabi Polytechnic</div>
-        <div className="font-bold text-sm">{form.semesterDisplay}</div>
-        <div className="font-bold text-sm">Meeting #{form.meetingNumberDisplay} Minutes</div>
+        <div className="font-bold text-xs leading-[1.15]">Intelligent Systems (IS) Focus Group</div>
+        <div className="font-bold text-xs leading-[1.15]">EMET, Abu Dhabi Polytechnic</div>
+        <div className="font-bold text-xs leading-[1.15]">{form.semesterDisplay}</div>
+        <div className="font-bold text-xs leading-[1.15]">Meeting #{form.meetingNumberDisplay} Minutes</div>
       </div>
       <div className="flex items-center gap-3">
         <img src="/logo2.png" alt="EMET" className="h-14 object-contain" />
@@ -584,13 +705,14 @@ export default function App() {
     </div>
   );
 
-  const tdBase = "border border-gray-700 px-1.5 py-1 text-xs align-middle";
-  const thBase = "border border-gray-700 px-1.5 py-1 text-xs font-bold bg-gray-200 text-center align-middle";
+  const tdBase = "border border-slate-400 px-1.5 py-1 text-xs text-slate-800 align-middle";
+  const thBase = "border border-slate-400 px-1.5 py-1 text-xs font-bold bg-blue-100 text-blue-950 text-center align-middle";
+  const labelCellBase = `${tdBase} mom-label-cell font-bold text-center`;
 
   return (
     <div className="min-h-screen bg-gray-100 font-sans">
       {/* Top Bar */}
-      <div className="bg-blue-900 text-white px-6 py-3 flex items-center justify-between shadow-lg">
+      <div className="no-print bg-blue-900 text-white px-6 py-3 flex items-center justify-between shadow-lg">
         <div className="flex items-center gap-3">
           <div className="bg-white rounded p-1">
             <img src="/logo1.png" alt="logo" className="h-8 object-contain" />
@@ -801,17 +923,32 @@ export default function App() {
 
       {/* Preview Tab */}
       {activeTab === "preview" && (
-        <div className="p-6">
+        <div className="preview-shell p-6">
           {/* Controls */}
-          <div className="flex flex-wrap items-center gap-4 mb-5 bg-white rounded-xl p-4 shadow max-w-5xl mx-auto">
+          <div className="no-print flex flex-wrap items-center gap-4 mb-5 bg-white rounded-xl p-4 shadow max-w-5xl mx-auto">
             <div className="flex items-center gap-3 flex-1">
-              <label className="text-sm font-semibold text-gray-700">Table Scale:</label>
+              <div className="min-w-28">
+                <label htmlFor="table-width" className="block text-sm font-semibold text-gray-800">Table width</label>
+                <span className="text-xs text-slate-500">Preview and exports</span>
+              </div>
               <input
-                type="range" min={60} max={130} value={tableScale}
-                onChange={(e) => setTableScale(Number(e.target.value))}
-                className="flex-1"
+                id="table-width"
+                type="range"
+                min={70}
+                max={100}
+                step={5}
+                value={tableWidth}
+                onChange={(e) => setTableWidth(Number(e.target.value))}
+                className="flex-1 accent-blue-800"
               />
-              <span className="text-sm font-mono w-12">{tableScale}%</span>
+              <span className="text-sm font-mono font-semibold text-blue-900 w-12">{tableWidth}%</span>
+              <button
+                onClick={() => setTableWidth(100)}
+                disabled={tableWidth === 100}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-default disabled:opacity-50"
+              >
+                Reset
+              </button>
             </div>
             <div className="flex gap-2">
               <button
@@ -832,72 +969,75 @@ export default function App() {
           </div>
 
           {/* Preview Pages */}
-          <div ref={previewRef} className="space-y-8 max-w-4xl mx-auto">
+          <div ref={previewRef} className="mom-pages space-y-8 max-w-4xl mx-auto pb-6">
             {/* Page 1 */}
-            <div className="mom-page bg-white shadow-xl rounded-lg p-10" style={{ minHeight: "297mm", fontFamily: "Arial, sans-serif" }}>
+            <div className="mom-page bg-white shadow-xl rounded-lg mx-auto" style={pageStyle}>
               <PreviewHeader />
-              <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: `${100 / scale}%` }}>
+              <div className="mom-content" style={tableWidthStyle}>
                 {/* Info Table */}
-                <table className="w-full border-collapse mb-4" style={{ fontSize: 11 }}>
+                <table className="mom-table w-full border-collapse mb-4">
+                  <colgroup>
+                    {[18, 16, 16, 17, 16, 17].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+                  </colgroup>
                   <tbody>
                     <tr>
-                      <td className={`${thBase} w-32`}>Meeting Title:</td>
-                      <td className={`${tdBase}`} colSpan={2}>{form.meetingTitle}</td>
-                      <td className={`${thBase} w-24`}>Meeting Ref:</td>
-                      <td className={`${tdBase}`}>{form.meetingRef}</td>
+                      <td className={labelCellBase}>Meeting Title:</td>
+                      <td className={tdBase} colSpan={2}>{form.meetingTitle}</td>
+                      <td className={labelCellBase}>Meeting Ref:</td>
+                      <td className={tdBase} colSpan={2}>{form.meetingRef}</td>
                     </tr>
                     <tr>
-                      <td className={thBase}>Date:</td>
+                      <td className={labelCellBase}>Date:</td>
                       <td className={tdBase}>{form.date}</td>
-                      <td className={tdBase}>Start: {form.startTime}</td>
-                      <td className={tdBase}>End:</td>
-                      <td className={tdBase}>{form.endTime}</td>
+                      <td className={tdBase} colSpan={2}>Start: {form.startTime}</td>
+                      <td className={tdBase} colSpan={2}>End: {form.endTime}</td>
                     </tr>
                     <tr>
-                      <td className={thBase}>Semester:</td>
+                      <td className={labelCellBase}>Semester:</td>
                       <td className={tdBase} colSpan={2}>{form.semester}</td>
-                      <td className={tdBase}>Minutes #:</td>
-                      <td className={tdBase}>{form.minutesNo}</td>
+                      <td className={labelCellBase}>Minutes #:</td>
+                      <td className={tdBase} colSpan={2}>{form.minutesNo}</td>
                     </tr>
                     <tr>
-                      <td className={thBase}>Place:</td>
-                      <td className={tdBase} colSpan={4}>{form.place}</td>
+                      <td className={labelCellBase}>Place:</td>
+                      <td className={tdBase} colSpan={5}>{form.place}</td>
                     </tr>
                     <tr>
-                      <td className={thBase}>Facilitator:</td>
+                      <td className={labelCellBase}>Facilitator:</td>
                       <td className={tdBase} colSpan={2}>{form.facilitator}</td>
-                      <td className={thBase}>Minutes by:</td>
-                      <td className={tdBase}>{form.minutesBy}</td>
+                      <td className={labelCellBase}>Minutes by:</td>
+                      <td className={tdBase} colSpan={2}>{form.minutesBy}</td>
                     </tr>
                     <tr>
-                      <td className={thBase}>Attendees:</td>
-                      <td className={tdBase} colSpan={4}>{form.attendees}</td>
+                      <td className={labelCellBase}>Attendees:</td>
+                      <td className={tdBase} colSpan={5}>{form.attendees}</td>
                     </tr>
                     <tr>
-                      <td className={thBase}>Name</td>
+                      <td className={thBase} colSpan={2}>Name</td>
                       <td className={thBase} colSpan={2}>Members / Guest</td>
                       <td className={thBase} colSpan={2}>Endorsement<br />(Approve or Need Clarification)</td>
                     </tr>
                     {form.attendeeRows.map((r) => (
                       <tr key={r.id}>
-                        <td className={tdBase}>{r.name}</td>
+                        <td className={tdBase} colSpan={2}>{r.name}</td>
                         <td className={tdBase} colSpan={2}>{r.role}</td>
                         <td className={tdBase} colSpan={2}>{r.endorsement}</td>
                       </tr>
                     ))}
                     <tr>
-                      <td className={`${thBase} italic`} style={{ textDecoration: "underline" }}>Excused:</td>
-                      <td className={tdBase} colSpan={4}>{form.excused}</td>
+                      <td className={`${labelCellBase} italic`}>Excused:</td>
+                      <td className={tdBase} colSpan={5}>{form.excused}</td>
                     </tr>
                   </tbody>
                 </table>
 
                 {/* Agenda */}
                 <div className="font-bold text-sm mb-1">Agenda:</div>
-                <table className="w-full border-collapse" style={{ fontSize: 11 }}>
+                <table className="mom-table w-full border-collapse">
+                  <colgroup><col style={{ width: "12%" }} /><col style={{ width: "88%" }} /></colgroup>
                   <thead>
                     <tr>
-                      <th className={`${thBase} w-16`}>Item No.</th>
+                      <th className={thBase}>Item No.</th>
                       <th className={thBase}>Subject (Standing Agenda)</th>
                     </tr>
                   </thead>
@@ -911,19 +1051,20 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
-              <div className="text-center text-xs text-gray-400 mt-auto pt-6">1</div>
+              <div className="mom-page-footer text-center text-xs text-slate-400">1</div>
             </div>
 
             {/* Page 2 */}
-            <div className="mom-page bg-white shadow-xl rounded-lg p-10" style={{ minHeight: "297mm", fontFamily: "Arial, sans-serif" }}>
+            <div className="mom-page bg-white shadow-xl rounded-lg mx-auto" style={pageStyle}>
               <PreviewHeader />
-              <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: `${100 / scale}%` }}>
+              <div className="mom-content" style={tableWidthStyle}>
                 <div className="font-bold text-sm mb-2">Task Status for Previous Meeting: {form.taskStatusRef}</div>
-                <table className="w-full border-collapse mb-4" style={{ fontSize: 11 }}>
+                <table className="mom-table w-full border-collapse mb-4">
+                  <colgroup><col style={{ width: "75%" }} /><col style={{ width: "25%" }} /></colgroup>
                   <thead>
                     <tr>
                       <th className={thBase}>Items Discussed</th>
-                      <th className={`${thBase} w-32`}>Task Status</th>
+                      <th className={thBase}>Task Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -939,25 +1080,26 @@ export default function App() {
                 <div className="font-bold text-sm mb-2">Discussion Points:</div>
                 {form.discussionPoints.map((dp) => (
                   <div key={dp.id} className="mb-4">
-                    <table className="w-full border-collapse" style={{ fontSize: 11 }}>
+                    <table className="mom-table w-full border-collapse">
+                      <colgroup><col style={{ width: "60%" }} /><col style={{ width: "20%" }} /><col style={{ width: "20%" }} /></colgroup>
                       <tbody>
                         <tr>
-                          <td className={thBase} colSpan={3}>{dp.title}</td>
+                          <td className={`${thBase} discussion-title`} colSpan={3}>{dp.title}</td>
                         </tr>
                         <tr>
-                          <td className={`${tdBase} font-bold`} colSpan={3}>Discussion:</td>
+                          <td className={`${tdBase} discussion-label`} colSpan={3}>Discussion:</td>
                         </tr>
                         <tr>
                           <td className={tdBase} colSpan={3} style={{ minHeight: 48, height: 48 }}>{dp.discussion}</td>
                         </tr>
                         <tr>
-                          <td className={`${tdBase} font-bold`} colSpan={3}>Decision:</td>
+                          <td className={`${tdBase} discussion-label`} colSpan={3}>Decision:</td>
                         </tr>
                         <tr>
                           <td className={tdBase} colSpan={3} style={{ minHeight: 40, height: 40 }}>{dp.decision}</td>
                         </tr>
                         <tr>
-                          <td className={`${tdBase} font-bold`} colSpan={3}>Task to be Completed:</td>
+                          <td className={`${tdBase} discussion-label`} colSpan={3}>Task to be Completed:</td>
                         </tr>
                         <tr>
                           <th className={thBase}>Action</th>
@@ -976,34 +1118,26 @@ export default function App() {
                   </div>
                 ))}
               </div>
-              <div className="text-center text-xs text-gray-400 mt-auto pt-6">2</div>
+              <div className="mom-page-footer text-center text-xs text-slate-400">2</div>
             </div>
 
             {/* Page 3 */}
-            <div className="mom-page bg-white shadow-xl rounded-lg p-10" style={{ minHeight: "297mm", fontFamily: "Arial, sans-serif" }}>
+            <div className="mom-page bg-white shadow-xl rounded-lg mx-auto" style={pageStyle}>
               <PreviewHeader />
-              <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: `${100 / scale}%` }}>
-                {/* Empty rows table at top like template */}
-                <table className="w-full border-collapse mb-4" style={{ fontSize: 11 }}>
-                  <tbody>
-                    <tr><td className={tdBase} colSpan={3} style={{ height: 24 }}></td></tr>
-                    <tr><td className={tdBase} colSpan={3} style={{ height: 24 }}></td></tr>
-                    <tr><td className={tdBase} colSpan={3} style={{ height: 24 }}></td></tr>
-                  </tbody>
-                </table>
-
+              <div className="mom-content" style={tableWidthStyle}>
                 <div className="font-bold text-sm mb-1">Meeting Summary:</div>
-                <ul className="mb-4 ml-4 text-xs list-disc" style={{ fontSize: 11 }}>
+                <ul className="mb-4 ml-4 text-xs list-disc" style={{ fontSize: 12 }}>
                   {form.meetingSummary.split("\n").filter(Boolean).map((line, i) => (
                     <li key={i}>{line}</li>
                   ))}
                 </ul>
 
                 <div className="font-bold text-sm mb-1">Attached Documents (Appendix):</div>
-                <table className="w-full border-collapse mb-4" style={{ fontSize: 11 }}>
+                <table className="mom-table w-full border-collapse mb-4">
+                  <colgroup><col style={{ width: "20%" }} /><col style={{ width: "80%" }} /></colgroup>
                   <thead>
                     <tr>
-                      <th className={`${thBase} w-16`}>No.</th>
+                      <th className={thBase}>No.</th>
                       <th className={thBase}>Title of Document / Shared Document Links</th>
                     </tr>
                   </thead>
@@ -1021,19 +1155,24 @@ export default function App() {
                   <span className="font-bold">Approval </span>
                   <span className="italic">(The chair of the meeting confirms with his signature that the discussions and decisions of the meeting were correctly recorded)</span>
                 </div>
-                <table className="w-full border-collapse mb-4" style={{ fontSize: 11 }}>
+                <table className="mom-table w-full border-collapse mb-4">
+                  <colgroup>
+                    <col style={{ width: "20%" }} /><col style={{ width: "30%" }} />
+                    <col style={{ width: "25%" }} /><col style={{ width: "25%" }} />
+                  </colgroup>
                   <tbody>
                     <tr>
-                      <td className={`${thBase} w-16`}>Date:</td>
-                      <td className={`${tdBase} w-32`}>{form.approvalDate}</td>
-                      <td className={`${thBase} w-36`}>Signature of Chair:</td>
+                      <td className={labelCellBase}>Date:</td>
+                      <td className={tdBase}>{form.approvalDate}</td>
+                      <td className={labelCellBase}>Signature of Chair:</td>
                       <td className={tdBase}></td>
                     </tr>
                   </tbody>
                 </table>
 
                 <div className="font-bold text-sm mb-1">Distribution</div>
-                <table className="w-full border-collapse mb-3" style={{ fontSize: 11 }}>
+                <table className="mom-table w-full border-collapse mb-3">
+                  <colgroup><col style={{ width: "50%" }} /><col style={{ width: "50%" }} /></colgroup>
                   <tbody>
                     <tr>
                       <td className={tdBase}>• {form.distribution}</td>
@@ -1042,12 +1181,19 @@ export default function App() {
                   </tbody>
                 </table>
 
-                <div className="text-xs border border-gray-700 p-2 rounded">
-                  <span className="font-bold">NOTE: </span>
-                  Attendees are requested to communicate to the author (MoM) any conditions, corrections, or amendments to these minutes. In the event no communication is received within 5 working days of receipt, the minutes are considered approved as written.
-                </div>
+                <table className="mom-table w-full border-collapse">
+                  <colgroup><col style={{ width: "100%" }} /></colgroup>
+                  <tbody>
+                    <tr>
+                      <td className={`${tdBase} bg-slate-50`}>
+                        <span className="font-bold text-blue-950">NOTE: </span>
+                        Attendees are requested to communicate to the author (MoM) any conditions, corrections, or amendments to these minutes. In the event no communication is received within 5 working days of receipt, the minutes are considered approved as written.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-              <div className="text-center text-xs text-gray-400 mt-auto pt-6">3</div>
+              <div className="mom-page-footer text-center text-xs text-slate-400">3</div>
             </div>
           </div>
         </div>
