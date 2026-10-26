@@ -148,9 +148,14 @@ select:focus-visible {
 
 .mom-page .mom-table th,
 .mom-page .mom-table td {
+  border: 1px solid #8795a8;
   overflow-wrap: anywhere;
   word-break: normal;
   vertical-align: middle;
+}
+
+.mom-page .mom-table td {
+  background-color: #fff;
 }
 
 .mom-page .mom-table th {
@@ -173,6 +178,14 @@ select:focus-visible {
 .mom-page .mom-table td.discussion-title {
   color: #fff;
   background: #17365d;
+}
+
+.mom-page .mom-table td.mom-note-cell {
+  background: #f8fafc;
+}
+
+.mom-page .mom-note-label {
+  color: #17365d;
 }
 
 .mom-section-heading {

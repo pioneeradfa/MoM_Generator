@@ -3,6 +3,8 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { Document, Packer, Paragraph, Table, TableRow, TableCell, WidthType, AlignmentType, TextRun, BorderStyle, ShadingType, Header, Footer, ImageRun, VerticalAlign, TableLayoutType, PageNumber, HeightRule, convertInchesToTwip, convertMillimetersToTwip, type ParagraphChild } from "docx";
 import { saveAs } from "file-saver";
+import defaultLogoLeft from "./assets/logo1.png?inline";
+import defaultLogoRight from "./assets/logo2.png?inline";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AttendeeRow {
@@ -239,7 +241,7 @@ export default function App() {
   const [tableWidth, setTableWidth] = useState(100);
   const [fontSize, setFontSize] = useState(9);
   const [textAlignment, setTextAlignment] = useState<TextAlignment>("left");
-  const [logos, setLogos] = useState({ left: "/logo1.png", right: "/logo2.png" });
+  const [logos, setLogos] = useState({ left: defaultLogoLeft, right: defaultLogoRight });
   const [logoError, setLogoError] = useState("");
   const previewRef = useRef<HTMLDivElement>(null);
   const [generating, setGenerating] = useState(false);
@@ -415,6 +417,22 @@ export default function App() {
           height: captureHeight,
           windowWidth: Math.max(document.documentElement.clientWidth, captureWidth),
           onclone: (clonedDocument) => {
+            // html2canvas 1.x cannot parse Tailwind v4's default oklch palette.
+            // Override the document-page tokens with equivalent sRGB values in
+            // the clone so PDF capture works in browsers that preserve oklch.
+            const pdfSafeColors = clonedDocument.createElement("style");
+            pdfSafeColors.textContent = `
+              :root {
+                --color-slate-50: #f8fafc !important;
+                --color-slate-400: #94a3b8 !important;
+                --color-slate-800: #1e293b !important;
+                --color-blue-100: #dbeafe !important;
+                --color-blue-950: #172554 !important;
+              }
+              .mom-page, .mom-page * { box-shadow: none !important; text-shadow: none !important; }
+              .mom-page .mom-table th, .mom-page .mom-table td { border-color: #8795a8 !important; }
+            `;
+            clonedDocument.head.appendChild(pdfSafeColors);
             clonedDocument.querySelectorAll<HTMLElement>(".mom-page").forEach((clonedPage) => {
               clonedPage.style.boxShadow = "none";
               clonedPage.style.borderRadius = "0";
@@ -447,6 +465,13 @@ export default function App() {
     try {
       const toBytes = async (url: string): Promise<Uint8Array | null> => {
         try {
+          if (url.startsWith("data:") && url.includes(";base64,")) {
+            const encoded = url.slice(url.indexOf(",") + 1);
+            const binary = window.atob(encoded);
+            const bytes = new Uint8Array(binary.length);
+            for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+            return bytes;
+          }
           const response = await fetch(url);
           if (!response.ok) return null;
           return new Uint8Array(await response.arrayBuffer());
@@ -802,8 +827,8 @@ export default function App() {
     </div>
   );
 
-  const tdBase = "border border-slate-400 px-1.5 py-0.5 text-xs text-slate-800 align-middle";
-  const thBase = "border border-slate-400 px-1.5 py-0.5 text-xs font-bold bg-blue-100 text-blue-950 text-center align-middle";
+  const tdBase = "border px-1.5 py-0.5 text-xs align-middle";
+  const thBase = "border px-1.5 py-0.5 text-xs font-bold text-center align-middle";
   const labelCellBase = `${tdBase} mom-label-cell font-bold text-center`;
 
   return (
@@ -812,7 +837,7 @@ export default function App() {
       <div className="no-print bg-blue-900 text-white px-6 py-3 flex items-center justify-between shadow-lg">
         <div className="flex items-center gap-3">
           <div className="bg-white rounded p-1">
-            <img src="/logo1.png" alt="logo" className="h-8 object-contain" />
+            <img src={defaultLogoLeft} alt="Abu Dhabi Polytechnic" className="h-8 object-contain" />
           </div>
           <div>
             <div className="font-bold text-lg leading-tight">Minutes of Meeting Generator</div>
@@ -882,13 +907,13 @@ export default function App() {
                   label="Left logo"
                   src={logos.left}
                   onFile={(file) => uploadLogo("left", file)}
-                  onReset={() => setLogos((current) => ({ ...current, left: "/logo1.png" }))}
+                  onReset={() => setLogos((current) => ({ ...current, left: defaultLogoLeft }))}
                 />
                 <LogoPicker
                   label="Right logo"
                   src={logos.right}
                   onFile={(file) => uploadLogo("right", file)}
-                  onReset={() => setLogos((current) => ({ ...current, right: "/logo2.png" }))}
+                  onReset={() => setLogos((current) => ({ ...current, right: defaultLogoRight }))}
                 />
               </div>
               {logoError && <p role="alert" className="mt-3 text-sm text-rose-700">{logoError}</p>}
@@ -1201,7 +1226,7 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
-              <div className="mom-page-footer text-center text-xs text-slate-400">1</div>
+              <div className="mom-page-footer text-center text-xs">1</div>
             </div>
 
             {/* Page 2 */}
@@ -1274,7 +1299,7 @@ export default function App() {
                   ))}
                 </ul>
               </div>
-              <div className="mom-page-footer text-center text-xs text-slate-400">2</div>
+              <div className="mom-page-footer text-center text-xs">2</div>
             </div>
 
             {/* Page 3 */}
@@ -1346,15 +1371,15 @@ export default function App() {
                   <colgroup><col style={{ width: "100%" }} /></colgroup>
                   <tbody>
                     <tr>
-                      <td className={`${tdBase} bg-slate-50`}>
-                        <span className="font-bold text-blue-950">NOTE: </span>
+                      <td className={`${tdBase} mom-note-cell`}>
+                        <span className="font-bold mom-note-label">NOTE: </span>
                         Attendees are requested to communicate to the author (MoM) any conditions, corrections, or amendments to these minutes. In the event no communication is received within 5 working days of receipt, the minutes are considered approved as written.
                       </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
-              <div className="mom-page-footer text-center text-xs text-slate-400">3</div>
+              <div className="mom-page-footer text-center text-xs">3</div>
             </div>
           </div>
         </div>
