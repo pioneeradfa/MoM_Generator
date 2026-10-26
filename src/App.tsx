@@ -45,6 +45,7 @@ interface FormData {
   startTime: string;
   endTime: string;
   semester: string;
+  academicYear: string;
   minutesNo: string;
   place: string;
   facilitator: string;
@@ -64,8 +65,8 @@ interface FormData {
   distribution: string;
   distributionOthers: string;
   focusGroupName: string;
-  department: string;
-  semesterDisplay: string;
+  otherCommitteeName: string;
+  program: string;
   headerMeetingTitle: string;
 }
 
@@ -80,13 +81,57 @@ const toWordAlignment = (alignment: TextAlignment) => {
   }
 };
 
+const COMMITTEE_OPTIONS = [
+  "Department Council Committee",
+  "Quality assurance committee",
+  "Curriculum review and development committee",
+  "OBF Readiness Committee",
+  "IAT Strategic KPIs Readiness Committee",
+  "Grade appeal committee",
+  "CAF auditing committee",
+  "Articulation Committee",
+  "Graduation projects committee",
+  "On job training committee",
+  "Student upskilling & Activities committee",
+  "Research, innovation and professional development committee",
+  "Labs and inventory committee",
+  "Procurement committee",
+  "Scheduling and timetable committee",
+  "Graduates and alumni committee",
+  "Campus life and student activities committee",
+  "Department Activities Engagement & Events Committee",
+  "Department webmaster committee",
+  "Mechanical focus group",
+  "Electrical focus group",
+  "Smart Manufacturing focus group",
+  "Intelligent system focus group",
+  "Departmental Recruitment Committee",
+  "Grades Verification Committee",
+  "Professional Programs and Skills Development Committee",
+  "Others",
+] as const;
+
+const SEMESTER_OPTIONS = ["Fall", "Spring", "Summer"] as const;
+const ACADEMIC_YEAR_OPTIONS = Array.from({ length: 11 }, (_, index) => `${2020 + index}-${2021 + index}`);
+
+function getCommitteeName(form: Pick<FormData, "focusGroupName" | "otherCommitteeName">) {
+  return form.focusGroupName === "Others"
+    ? form.otherCommitteeName.trim() || "Other committee"
+    : form.focusGroupName;
+}
+
+function formatSemesterYear(semester: string, academicYear: string) {
+  return `${semester}, AY${academicYear}`;
+}
+
 const defaultForm: FormData = {
   meetingTitle: "ISFG Meeting",
   meetingRef: "EMET-IS-AY2627.S1.1",
   date: "27/08/2026",
   startTime: "1:00 pm",
   endTime: "2:05 pm",
-  semester: "Semester 1, Fall",
+  semester: "Fall",
+  academicYear: "2026-2027",
   minutesNo: "1",
   place: "Online (MS Teams)",
   facilitator: "Sobers Francis",
@@ -138,9 +183,9 @@ const defaultForm: FormData = {
   approvalDate: "",
   distribution: "To all Attendees",
   distributionOthers: "N/A",
-  focusGroupName: "Intelligent Systems (IS) Focus Group",
-  department: "EMET, Abu Dhabi Polytechnic",
-  semesterDisplay: "S1, AY2026-2027",
+  focusGroupName: "Intelligent system focus group",
+  otherCommitteeName: "",
+  program: "EMSET",
   headerMeetingTitle: "Meeting #2 Minutes",
 };
 
@@ -157,6 +202,16 @@ function safeFilePart(value: string) {
     .replace(/-+/g, "-")
     .replace(/[. ]+$/g, "");
   return safeName || "meeting";
+}
+
+function dateToInputValue(value: string) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
+}
+
+function dateFromInputValue(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
 }
 
 async function imageFileToPngDataUrl(file: File): Promise<string> {
@@ -244,6 +299,8 @@ export default function App() {
   const [logoError, setLogoError] = useState("");
   const previewRef = useRef<HTMLDivElement>(null);
   const [generating, setGenerating] = useState(false);
+  const committeeName = getCommitteeName(form);
+  const semesterYear = formatSemesterYear(form.semester, form.academicYear);
 
   const uploadLogo = async (file?: File) => {
     if (!file) return;
@@ -494,7 +551,7 @@ export default function App() {
         cells: [
           { paragraphs: [logoParagraph(logoData, 76, 40)], alignment: AlignmentType.CENTER },
           {
-            paragraphs: [headerParagraph([new TextRun({ text: form.focusGroupName, bold: true, size: 19, font: "Arial", color: "17365D" })])],
+            paragraphs: [headerParagraph([new TextRun({ text: committeeName, bold: true, size: 19, font: "Arial", color: "17365D" })])],
             alignment: AlignmentType.CENTER,
           },
           { paragraphs: [headerParagraph([new TextRun({ text: "" })])], alignment: AlignmentType.CENTER },
@@ -612,9 +669,9 @@ export default function App() {
       });
       const spacer = (after = 140) => new Paragraph({ children: [], spacing: { after } });
       const coverTitleParagraphs = [
-        new Paragraph({ children: [new TextRun({ text: form.focusGroupName, bold: true, size: Math.round((fontSize + 5) * 2), font: "Arial", color: "172033" })], alignment: AlignmentType.CENTER, spacing: { before: 0, after: 45 }, keepNext: true }),
-        new Paragraph({ children: [new TextRun({ text: form.department, bold: true, size: Math.round((fontSize + 1) * 2), font: "Arial", color: "243247" })], alignment: AlignmentType.CENTER, spacing: { before: 0, after: 35 }, keepNext: true }),
-        new Paragraph({ children: [new TextRun({ text: form.semesterDisplay, bold: true, size: Math.round(fontSize * 2), font: "Arial", color: "243247" })], alignment: AlignmentType.CENTER, spacing: { before: 0, after: 35 }, keepNext: true }),
+        new Paragraph({ children: [new TextRun({ text: committeeName, bold: true, size: Math.round((fontSize + 5) * 2), font: "Arial", color: "172033" })], alignment: AlignmentType.CENTER, spacing: { before: 0, after: 45 }, keepNext: true }),
+        new Paragraph({ children: [new TextRun({ text: `Program: ${form.program}`, bold: true, size: Math.round((fontSize + 1) * 2), font: "Arial", color: "243247" })], alignment: AlignmentType.CENTER, spacing: { before: 0, after: 35 }, keepNext: true }),
+        new Paragraph({ children: [new TextRun({ text: semesterYear, bold: true, size: Math.round(fontSize * 2), font: "Arial", color: "243247" })], alignment: AlignmentType.CENTER, spacing: { before: 0, after: 35 }, keepNext: true }),
         new Paragraph({ children: [new TextRun({ text: form.headerMeetingTitle, bold: true, size: Math.round((fontSize + 2) * 2), font: "Arial", color: "17365D" })], alignment: AlignmentType.CENTER, spacing: { before: 0, after: 150 }, keepNext: true }),
       ];
 
@@ -623,7 +680,7 @@ export default function App() {
       const infoRows: WordRowSpec[] = [
         { cells: [label("Meeting Title:"), bodyCell(form.meetingTitle, 2), label("Meeting Ref:"), bodyCell(form.meetingRef, 2)] },
         { cells: [label("Date:"), bodyCell(form.date), bodyCell(`Start: ${form.startTime}`, 2), bodyCell(`End: ${form.endTime}`, 2)] },
-        { cells: [label("Semester:"), bodyCell(form.semester, 2), label("Minutes #:"), bodyCell(form.minutesNo, 2)] },
+        { cells: [label("Semester:"), bodyCell(semesterYear, 2), label("Minutes #:"), bodyCell(form.minutesNo, 2)] },
         { cells: [label("Place:"), bodyCell(form.place, 5)] },
         { cells: [label("Facilitator:"), bodyCell(form.facilitator, 2), label("Minutes by:"), bodyCell(form.minutesBy, 2)] },
         { cells: [label("Attendees:"), bodyCell(form.attendees, 5)] },
@@ -809,7 +866,7 @@ export default function App() {
     <div className="mom-running-header">
       <div className="mom-running-header-row">
         <img src={logo} alt="Institution logo" className="mom-header-logo" />
-        <div className="mom-header-name">{form.focusGroupName}</div>
+        <div className="mom-header-name">{committeeName}</div>
         <span aria-hidden="true" />
       </div>
       <div className="mom-header-rule" />
@@ -818,9 +875,9 @@ export default function App() {
 
   const CoverTitle = () => (
     <div className="mom-cover-title" style={coverTitleStyle}>
-      <div className="mom-cover-group">{form.focusGroupName}</div>
-      <div className="mom-cover-department">{form.department}</div>
-      <div className="mom-cover-semester">{form.semesterDisplay}</div>
+      <div className="mom-cover-group">{committeeName}</div>
+      <div className="mom-cover-program">Program: {form.program}</div>
+      <div className="mom-cover-semester">{semesterYear}</div>
       <div className="mom-cover-meeting">{form.headerMeetingTitle}</div>
     </div>
   );
@@ -839,7 +896,7 @@ export default function App() {
           </div>
           <div>
             <div className="font-bold text-lg leading-tight">Minutes of Meeting Generator</div>
-            <div className="text-xs text-blue-200">{form.focusGroupName} · {form.department}</div>
+            <div className="text-xs text-blue-200">{committeeName} · Program: {form.program}</div>
           </div>
         </div>
         <div className="flex gap-2">
@@ -890,9 +947,28 @@ export default function App() {
           {/* Section: Header and cover details */}
           <Section title="Document Header & Cover Page">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Focus Group Name" value={form.focusGroupName} onChange={(v) => set("focusGroupName", v)} />
-              <Field label="Department" value={form.department} onChange={(v) => set("department", v)} />
-              <Field label="Semester / Academic Year" value={form.semesterDisplay} onChange={(v) => set("semesterDisplay", v)} />
+              <SelectField
+                label="Committee"
+                value={form.focusGroupName}
+                options={COMMITTEE_OPTIONS}
+                onChange={(v) => set("focusGroupName", v)}
+              />
+              {form.focusGroupName === "Others" && (
+                <Field label="Other committee (please specify)" value={form.otherCommitteeName} onChange={(v) => set("otherCommitteeName", v)} />
+              )}
+              <Field label="Program" value={form.program} onChange={(v) => set("program", v)} />
+              <SelectField
+                label="Semester"
+                value={form.semester}
+                options={SEMESTER_OPTIONS}
+                onChange={(v) => set("semester", v)}
+              />
+              <SelectField
+                label="Academic Year"
+                value={form.academicYear}
+                options={ACADEMIC_YEAR_OPTIONS}
+                onChange={(v) => set("academicYear", v)}
+              />
               <Field label="Meeting Title (Header)" value={form.headerMeetingTitle} onChange={(v) => set("headerMeetingTitle", v)} />
             </div>
             <div className="mt-6 border-t border-slate-100 pt-5">
@@ -917,10 +993,9 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="Meeting Title" value={form.meetingTitle} onChange={(v) => set("meetingTitle", v)} />
               <Field label="Meeting Ref" value={form.meetingRef} onChange={(v) => set("meetingRef", v)} />
-              <Field label="Date" value={form.date} onChange={(v) => set("date", v)} />
+              <DateField label="Date" value={form.date} onChange={(v) => set("date", v)} />
               <Field label="Start Time" value={form.startTime} onChange={(v) => set("startTime", v)} />
               <Field label="End Time" value={form.endTime} onChange={(v) => set("endTime", v)} />
-              <Field label="Semester" value={form.semester} onChange={(v) => set("semester", v)} />
               <Field label="Minutes No." value={form.minutesNo} onChange={(v) => set("minutesNo", v)} />
               <Field label="Place" value={form.place} onChange={(v) => set("place", v)} />
               <Field label="Facilitator" value={form.facilitator} onChange={(v) => set("facilitator", v)} />
@@ -1161,7 +1236,7 @@ export default function App() {
                     </tr>
                     <tr>
                       <td className={labelCellBase}>Semester:</td>
-                      <td className={tdBase} colSpan={2}>{form.semester}</td>
+                      <td className={tdBase} colSpan={2}>{semesterYear}</td>
                       <td className={labelCellBase}>Minutes #:</td>
                       <td className={tdBase} colSpan={2}>{form.minutesNo}</td>
                     </tr>
@@ -1403,6 +1478,53 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
+    </div>
+  );
+}
+
+function SelectField({
+  label, value, options, onChange, className = "",
+}: {
+  label: string;
+  value: string;
+  options: readonly string[];
+  onChange: (value: string) => void;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <label className="mb-1 block text-xs font-semibold text-gray-600">{label}</label>
+      <select
+        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-8 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function DateField({
+  label, value, onChange, className = "",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <label className="mb-1 block text-xs font-semibold text-gray-600">{label}</label>
+      <input
+        type="date"
+        lang="en-GB"
+        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+        value={dateToInputValue(value)}
+        onChange={(event) => onChange(dateFromInputValue(event.target.value))}
+        aria-label={`${label}, displayed in the document as DD/MM/YYYY`}
+      />
+      <p className="mt-1 text-[11px] text-slate-500">Calendar picker · document format DD/MM/YYYY</p>
     </div>
   );
 }

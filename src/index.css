@@ -109,7 +109,7 @@ select:focus-visible {
   font-weight: 700;
 }
 
-.mom-cover-department {
+.mom-cover-program {
   margin-bottom: 0.8mm;
   font-size: calc(var(--mom-font-size, 9pt) + 1pt);
   font-weight: 700;
