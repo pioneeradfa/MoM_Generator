@@ -3,8 +3,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { Document, Packer, Paragraph, Table, TableRow, TableCell, WidthType, AlignmentType, TextRun, BorderStyle, ShadingType, Header, Footer, ImageRun, VerticalAlign, TableLayoutType, PageNumber, HeightRule, convertInchesToTwip, convertMillimetersToTwip, type ParagraphChild } from "docx";
 import { saveAs } from "file-saver";
-import defaultLogoLeft from "./assets/logo1.png?inline";
-import defaultLogoRight from "./assets/logo2.png?inline";
+import defaultLogo from "./assets/institution-logo.png?inline";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AttendeeRow {
@@ -210,8 +209,8 @@ const noTableBorders = {
 
 const A4_WIDTH_TWIPS = convertMillimetersToTwip(210);
 const A4_HEIGHT_TWIPS = convertMillimetersToTwip(297);
-const PAGE_LEFT_MARGIN_TWIPS = convertInchesToTwip(1.25);
-const PAGE_RIGHT_MARGIN_TWIPS = convertInchesToTwip(1);
+const PAGE_LEFT_MARGIN_TWIPS = convertInchesToTwip(0.5);
+const PAGE_RIGHT_MARGIN_TWIPS = convertInchesToTwip(0.5);
 const PAGE_CONTENT_WIDTH_TWIPS = A4_WIDTH_TWIPS - PAGE_LEFT_MARGIN_TWIPS - PAGE_RIGHT_MARGIN_TWIPS;
 
 interface WordCellSpec {
@@ -241,17 +240,16 @@ export default function App() {
   const [tableWidth, setTableWidth] = useState(100);
   const [fontSize, setFontSize] = useState(9);
   const [textAlignment, setTextAlignment] = useState<TextAlignment>("left");
-  const [logos, setLogos] = useState({ left: defaultLogoLeft, right: defaultLogoRight });
+  const [logo, setLogo] = useState(defaultLogo);
   const [logoError, setLogoError] = useState("");
   const previewRef = useRef<HTMLDivElement>(null);
   const [generating, setGenerating] = useState(false);
 
-  const uploadLogo = async (side: "left" | "right", file?: File) => {
+  const uploadLogo = async (file?: File) => {
     if (!file) return;
     setLogoError("");
     try {
-      const dataUrl = await imageFileToPngDataUrl(file);
-      setLogos((current) => ({ ...current, [side]: dataUrl }));
+      setLogo(await imageFileToPngDataUrl(file));
     } catch (error) {
       setLogoError(error instanceof Error ? error.message : "Could not load that logo.");
     }
@@ -480,8 +478,8 @@ export default function App() {
         }
       };
 
-      const [logo1Data, logo2Data] = await Promise.all([toBytes(logos.left), toBytes(logos.right)]);
-      if (!logo1Data && !logo2Data) throw new Error("Neither logo could be loaded. Please re-upload the logos and try again.");
+      const logoData = await toBytes(logo);
+      if (!logoData) throw new Error("The logo could not be loaded. Please upload the logo again and try again.");
       const headerParagraph = (children: ParagraphChild[], alignment = AlignmentType.CENTER) =>
         new Paragraph({
           children,
@@ -494,12 +492,12 @@ export default function App() {
 
       const headerRows: WordRowSpec[] = [{
         cells: [
-          { paragraphs: [logoParagraph(logo1Data, 66, 46)], alignment: AlignmentType.CENTER },
+          { paragraphs: [logoParagraph(logoData, 76, 40)], alignment: AlignmentType.CENTER },
           {
             paragraphs: [headerParagraph([new TextRun({ text: form.focusGroupName, bold: true, size: 19, font: "Arial", color: "17365D" })])],
             alignment: AlignmentType.CENTER,
           },
-          { paragraphs: [logoParagraph(logo2Data, 46, 46)], alignment: AlignmentType.CENTER },
+          { paragraphs: [headerParagraph([new TextRun({ text: "" })])], alignment: AlignmentType.CENTER },
         ],
       }];
 
@@ -558,7 +556,7 @@ export default function App() {
             verticalAlign: VerticalAlign.CENTER,
             shading: cell.fill ? { type: ShadingType.SOLID, color: cell.fill, fill: cell.fill } : undefined,
             borders,
-            margins: { top: 40, bottom: 40, left: 85, right: 85, marginUnitType: WidthType.DXA },
+            margins: { top: 80, bottom: 80, left: 85, right: 85, marginUnitType: WidthType.DXA },
             children: paragraphs,
           }), endColumn };
         };
@@ -715,12 +713,12 @@ export default function App() {
             page: {
               size: { width: A4_WIDTH_TWIPS, height: A4_HEIGHT_TWIPS },
               margin: {
-                top: convertInchesToTwip(1),
+                top: convertInchesToTwip(0.8),
                 right: PAGE_RIGHT_MARGIN_TWIPS,
-                bottom: convertInchesToTwip(1),
+                bottom: convertInchesToTwip(0.5),
                 left: PAGE_LEFT_MARGIN_TWIPS,
-                header: convertInchesToTwip(0.25),
-                footer: convertInchesToTwip(0.4),
+                header: convertInchesToTwip(0.15),
+                footer: convertInchesToTwip(0.3),
               },
             },
           },
@@ -800,7 +798,7 @@ export default function App() {
     width: "210mm",
     height: "297mm",
     minHeight: "297mm",
-    padding: "25.4mm 25.4mm 25.4mm 31.75mm",
+    padding: "20.32mm 12.7mm 12.7mm",
     boxSizing: "border-box",
     display: "flex",
     flexDirection: "column",
@@ -810,9 +808,9 @@ export default function App() {
   const PreviewHeader = () => (
     <div className="mom-running-header">
       <div className="mom-running-header-row">
-        <img src={logos.left} alt="Left document logo" className="mom-header-logo" />
+        <img src={logo} alt="Institution logo" className="mom-header-logo" />
         <div className="mom-header-name">{form.focusGroupName}</div>
-        <img src={logos.right} alt="Right document logo" className="mom-header-logo" />
+        <span aria-hidden="true" />
       </div>
       <div className="mom-header-rule" />
     </div>
@@ -837,7 +835,7 @@ export default function App() {
       <div className="no-print bg-blue-900 text-white px-6 py-3 flex items-center justify-between shadow-lg">
         <div className="flex items-center gap-3">
           <div className="bg-white rounded p-1">
-            <img src={defaultLogoLeft} alt="Abu Dhabi Polytechnic" className="h-8 object-contain" />
+            <img src={defaultLogo} alt="Abu Dhabi Polytechnic" className="h-8 object-contain" />
           </div>
           <div>
             <div className="font-bold text-lg leading-tight">Minutes of Meeting Generator</div>
@@ -899,21 +897,15 @@ export default function App() {
             </div>
             <div className="mt-6 border-t border-slate-100 pt-5">
               <div className="mb-3">
-                <h3 className="text-sm font-semibold text-slate-800">Institution logos</h3>
-                <p className="mt-1 text-xs text-slate-500">The supplied logos are used by default. Upload replacements for this document only.</p>
+                <h3 className="text-sm font-semibold text-slate-800">Institution logo</h3>
+                <p className="mt-1 text-xs text-slate-500">The supplied logo is used by default. Upload a replacement for this document only.</p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 <LogoPicker
-                  label="Left logo"
-                  src={logos.left}
-                  onFile={(file) => uploadLogo("left", file)}
-                  onReset={() => setLogos((current) => ({ ...current, left: defaultLogoLeft }))}
-                />
-                <LogoPicker
-                  label="Right logo"
-                  src={logos.right}
-                  onFile={(file) => uploadLogo("right", file)}
-                  onReset={() => setLogos((current) => ({ ...current, right: defaultLogoRight }))}
+                  label="Institution logo"
+                  src={logo}
+                  onFile={uploadLogo}
+                  onReset={() => setLogo(defaultLogo)}
                 />
               </div>
               {logoError && <p role="alert" className="mt-3 text-sm text-rose-700">{logoError}</p>}
@@ -1139,7 +1131,7 @@ export default function App() {
                 >{generating ? "⏳" : "📝"} Word</button>
               </div>
             </div>
-            <p className="mt-3 text-xs text-slate-500">These settings apply to both downloads. Exports use A4 with 1″ top, right and bottom margins and a 1.25″ left margin. Use a wider table for long entries, or reduce the font size to keep dense pages compact.</p>
+            <p className="mt-3 text-xs text-slate-500">These settings apply to both downloads. The document uses A4 with Narrow-style 0.5″ side and bottom margins and a 0.8″ top margin for the running header. Use a wider table for long entries, or reduce the font size to keep dense pages compact.</p>
           </div>
 
           {/* Preview Pages */}
