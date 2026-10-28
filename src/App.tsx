@@ -46,11 +46,9 @@ interface FormData {
   endTime: string;
   semester: string;
   academicYear: string;
-  minutesNo: string;
   place: string;
   facilitator: string;
   minutesBy: string;
-  attendees: string;
   attendeeRows: AttendeeRow[];
   excused: string;
   agendaItems: AgendaItem[];
@@ -121,7 +119,9 @@ function getCommitteeName(form: Pick<FormData, "focusGroupName" | "otherCommitte
 }
 
 function formatSemesterYear(semester: string, academicYear: string) {
-  return `${semester}, AY${academicYear}`;
+  const semesterCode: Record<string, string> = { Fall: "S1", Spring: "S2", Summer: "S3" };
+  const formattedYear = academicYear.replace(/^(\d{4})-(\d{4})$/, "$1 – $2");
+  return `${semesterCode[semester] ?? semester}, AY ${formattedYear}`;
 }
 
 const defaultForm: FormData = {
@@ -132,11 +132,9 @@ const defaultForm: FormData = {
   endTime: "2:05 pm",
   semester: "Fall",
   academicYear: "2026-2027",
-  minutesNo: "1",
   place: "Online (MS Teams)",
   facilitator: "Sobers Francis",
   minutesBy: "Sobers Francis",
-  attendees: "Respected Engineers, Doctors",
   attendeeRows: [
     { id: "1", name: "Eng. Hussein Alsamirat", role: "Members", endorsement: "Approved" },
     { id: "2", name: "Eng. Ihab Abdelrahman", role: "Members", endorsement: "Approved" },
@@ -186,7 +184,7 @@ const defaultForm: FormData = {
   focusGroupName: "Intelligent system focus group",
   otherCommitteeName: "",
   program: "EMSET",
-  headerMeetingTitle: "Meeting #2 Minutes",
+  headerMeetingTitle: "Minutes of Meeting #XXX",
 };
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -238,7 +236,7 @@ async function imageFileToPngDataUrl(file: File): Promise<string> {
   return canvas.toDataURL("image/png");
 }
 
-function cellBorder(style: (typeof BorderStyle)[keyof typeof BorderStyle] = BorderStyle.SINGLE, size = 4, color = "8795A8") {
+function cellBorder(style: (typeof BorderStyle)[keyof typeof BorderStyle] = BorderStyle.SINGLE, size = 4, color = "000000") {
   return { style, size, color };
 }
 
@@ -485,7 +483,7 @@ export default function App() {
                 --color-blue-950: #172554 !important;
               }
               .mom-page, .mom-page * { box-shadow: none !important; text-shadow: none !important; }
-              .mom-page .mom-table th, .mom-page .mom-table td { border-color: #8795a8 !important; }
+              .mom-page .mom-table th, .mom-page .mom-table td { border-color: #111827 !important; }
             `;
             clonedDocument.head.appendChild(pdfSafeColors);
             clonedDocument.querySelectorAll<HTMLElement>(".mom-page").forEach((clonedPage) => {
@@ -537,7 +535,10 @@ export default function App() {
 
       const logoData = await toBytes(logo);
       if (!logoData) throw new Error("The logo could not be loaded. Please upload the logo again and try again.");
-      const headerParagraph = (children: ParagraphChild[], alignment = AlignmentType.CENTER) =>
+      const headerParagraph = (
+        children: ParagraphChild[],
+        alignment: (typeof AlignmentType)[keyof typeof AlignmentType] = AlignmentType.CENTER,
+      ) =>
         new Paragraph({
           children,
           alignment,
@@ -547,14 +548,24 @@ export default function App() {
       const logoParagraph = (data: Uint8Array | null, width: number, height: number) =>
         headerParagraph(data ? [new ImageRun({ data, transformation: { width, height }, type: "png" })] : [new TextRun({ text: "" })]);
 
+      const headerTextParagraph = (text: string, size = 22) =>
+        headerParagraph([new TextRun({ text, bold: true, size, font: "Arial", color: "111827" })]);
       const headerRows: WordRowSpec[] = [{
         cells: [
-          { paragraphs: [logoParagraph(logoData, 76, 40)], alignment: AlignmentType.CENTER },
+          { paragraphs: [logoParagraph(logoData, 168, 88)], alignment: AlignmentType.CENTER },
           {
-            paragraphs: [headerParagraph([new TextRun({ text: committeeName, bold: true, size: 19, font: "Arial", color: "17365D" })])],
+            paragraphs: [
+              headerTextParagraph(committeeName, 24),
+              headerTextParagraph(`${form.program} Program, Abu Dhabi Polytechnic`, 22),
+              headerTextParagraph(semesterYear, 22),
+              headerTextParagraph(form.headerMeetingTitle, 24),
+            ],
             alignment: AlignmentType.CENTER,
           },
-          { paragraphs: [headerParagraph([new TextRun({ text: "" })])], alignment: AlignmentType.CENTER },
+          {
+            paragraphs: [headerTextParagraph(form.program, 24), headerTextParagraph("Program", 24)],
+            alignment: AlignmentType.CENTER,
+          },
         ],
       }];
 
@@ -650,69 +661,67 @@ export default function App() {
       const label = (
         text: string,
         span = 1,
+        alignment: (typeof AlignmentType)[keyof typeof AlignmentType] = AlignmentType.LEFT,
+      ): WordCellSpec => ({ text, span, bold: true, fill: "E5E5E5", color: "111827", alignment });
+      const headingCell = (
+        text: string,
+        span = 1,
         alignment: (typeof AlignmentType)[keyof typeof AlignmentType] = AlignmentType.CENTER,
-      ): WordCellSpec => ({ text, span, bold: true, fill: "E8EEF5", color: "17365D", alignment });
-      const headingCell = (text: string, span = 1): WordCellSpec => ({
+      ): WordCellSpec => ({
         text,
         span,
         bold: true,
-        fill: "DCE6F1",
-        color: "17365D",
-        alignment: AlignmentType.CENTER,
+        fill: "D9D9D9",
+        color: "111827",
+        alignment,
       });
       const bodyCell = (text: string, span = 1): WordCellSpec => ({ text, span });
       const makeHeading = (text: string, pageBreakBefore = false) => new Paragraph({
-        children: [new TextRun({ text, bold: true, size: Math.round(Math.max(fontSize + 2, 10) * 2), font: "Arial", color: "17365D" })],
+        children: [new TextRun({ text, bold: true, size: Math.round(Math.max(fontSize + 2, 10) * 2), font: "Arial", color: "111827" })],
         spacing: { before: 70, after: 90 },
         keepNext: true,
         pageBreakBefore,
       });
       const spacer = (after = 140) => new Paragraph({ children: [], spacing: { after } });
-      const coverTitleParagraphs = [
-        new Paragraph({ children: [new TextRun({ text: committeeName, bold: true, size: Math.round((fontSize + 5) * 2), font: "Arial", color: "172033" })], alignment: AlignmentType.CENTER, spacing: { before: 0, after: 45 }, keepNext: true }),
-        new Paragraph({ children: [new TextRun({ text: `Program: ${form.program}`, bold: true, size: Math.round((fontSize + 1) * 2), font: "Arial", color: "243247" })], alignment: AlignmentType.CENTER, spacing: { before: 0, after: 35 }, keepNext: true }),
-        new Paragraph({ children: [new TextRun({ text: semesterYear, bold: true, size: Math.round(fontSize * 2), font: "Arial", color: "243247" })], alignment: AlignmentType.CENTER, spacing: { before: 0, after: 35 }, keepNext: true }),
-        new Paragraph({ children: [new TextRun({ text: form.headerMeetingTitle, bold: true, size: Math.round((fontSize + 2) * 2), font: "Arial", color: "17365D" })], alignment: AlignmentType.CENTER, spacing: { before: 0, after: 150 }, keepNext: true }),
-      ];
-
-      // Page 1: one six-column grid is used for every information row. Spans
-      // always add up to six, so Word never has to guess a different table layout.
+      // Page 1 uses one fixed eight-column grid so all template row spans line up consistently.
       const infoRows: WordRowSpec[] = [
-        { cells: [label("Meeting Title:"), bodyCell(form.meetingTitle, 2), label("Meeting Ref:"), bodyCell(form.meetingRef, 2)] },
-        { cells: [label("Date:"), bodyCell(form.date), bodyCell(`Start: ${form.startTime}`, 2), bodyCell(`End: ${form.endTime}`, 2)] },
-        { cells: [label("Semester:"), bodyCell(semesterYear, 2), label("Minutes #:"), bodyCell(form.minutesNo, 2)] },
-        { cells: [label("Place:"), bodyCell(form.place, 5)] },
-        { cells: [label("Facilitator:"), bodyCell(form.facilitator, 2), label("Minutes by:"), bodyCell(form.minutesBy, 2)] },
-        { cells: [label("Attendees:"), bodyCell(form.attendees, 5)] },
-        { repeatHeader: true, cells: [headingCell("Name", 2), headingCell("Members / Guest", 2), headingCell("Endorsement\n(Approve or Need Clarification)", 2)] },
-        ...form.attendeeRows.map((row) => ({ cells: [bodyCell(row.name, 2), bodyCell(row.role, 2), bodyCell(row.endorsement, 2)] })),
-        { cells: [label("Excused:"), bodyCell(form.excused, 5)] },
+        { cells: [label("Meeting Title:", 2), bodyCell(form.meetingTitle, 6)] },
+        { cells: [label("Semester / Academic Year:", 2), bodyCell(semesterYear, 2), label("Meeting Ref:", 2), bodyCell(form.meetingRef, 2)] },
+        { cells: [label("Date of Meeting:", 2), bodyCell(form.date, 2), label("Start:", 1), bodyCell(form.startTime, 1), label("End:", 1), bodyCell(form.endTime, 1)] },
+        { cells: [label("Location:", 2), bodyCell(form.place, 6)] },
+        { cells: [label("Meeting Facilitator:", 2), bodyCell(form.facilitator, 2), label("Minutes by:", 2), bodyCell(form.minutesBy, 2)] },
+        { cells: [label("Attendees:", 8)] },
+        { repeatHeader: true, cells: [headingCell("Name", 2), headingCell("Designation", 2), headingCell("Endorsement\n(Approved / Needs modification)", 4)] },
+        ...form.attendeeRows.map((row) => ({ cells: [bodyCell(row.name, 2), bodyCell(row.role, 2), bodyCell(row.endorsement, 4)] })),
+        { cells: [label("Excused:", 2), bodyCell(form.excused, 6)] },
       ];
-      const infoTable = makeFixedTable([18, 16, 16, 17, 16, 17], infoRows);
+      const infoTable = makeFixedTable([15, 15, 15, 15, 10, 10, 10, 10], infoRows);
 
       const agendaTable = makeFixedTable([12, 88], [
+        { cells: [headingCell("AGENDA", 2)] },
         { repeatHeader: true, cells: [headingCell("Item No."), headingCell("Subject (Standing Agenda)")] },
         ...form.agendaItems.map((item, index) => ({ cells: [bodyCell(`${index + 1}.`), bodyCell(item.subject)] })),
       ]);
 
-      // Page 2: task status and discussion tables use fixed, reusable grids.
-      const taskTable = makeFixedTable([75, 25], [
-        { repeatHeader: true, cells: [headingCell("Items Discussed"), headingCell("Task Status")] },
-        ...form.taskStatusRows.map((row) => ({ cells: [bodyCell(row.item), bodyCell(row.status)] })),
+      const taskHeaderTable = makeFixedTable([75, 25], [
+        { cells: [headingCell(`Task Status for Previous Meeting: ${form.taskStatusRef}`, 2)] },
+        { cells: [headingCell("Items Discussed"), headingCell("Task Status")] },
       ]);
+      const taskRows = form.taskStatusRows.length
+        ? form.taskStatusRows.map((row) => ({ cells: [bodyCell(row.item), bodyCell(row.status)] }))
+        : [{ cells: [bodyCell(" "), bodyCell(" ")] }];
+      const taskRowsTable = makeFixedTable([75, 25], taskRows);
 
       const makeDiscussionTable = (point: DiscussionPoint) => {
         const rows: WordRowSpec[] = [
-          { cells: [{ text: point.title || "Discussion point", span: 3, bold: true, fill: "17365D", color: "FFFFFF", alignment: AlignmentType.CENTER }] },
-          { cells: [label("Discussion:", 3)] },
-          { minHeight: convertMillimetersToTwip(9.5), cells: [bodyCell(point.discussion || " ", 3)] },
-          { cells: [label("Decision:", 3, AlignmentType.LEFT)] },
-          { minHeight: convertMillimetersToTwip(7.5), cells: [bodyCell(point.decision || " ", 3)] },
-          { cells: [label("Task to be Completed:", 3, AlignmentType.LEFT)] },
-          { repeatHeader: true, cells: [headingCell("Action"), headingCell("Assignee"), headingCell("Deadline")] },
-          ...point.actions.map((action) => ({ cells: [bodyCell(action.action), bodyCell(action.assignee), bodyCell(action.deadline)] })),
+          { cells: [{ text: point.title || "Discussion point", span: 10, bold: true, fill: "D9D9D9", color: "111827", alignment: AlignmentType.CENTER }] },
+          { cells: [headingCell("Discussion", 5), headingCell("Decision", 5)] },
+          { minHeight: convertMillimetersToTwip(13), cells: [bodyCell(point.discussion ? `• ${point.discussion}` : " ", 5), bodyCell(point.decision ? `• ${point.decision}` : " ", 5)] },
+          { cells: [headingCell("Action Plan", 10)] },
+          { repeatHeader: true, cells: [headingCell("Action item", 6), headingCell("Assignee", 2), headingCell("Deadline", 2)] },
+          ...point.actions.map((action) => ({ cells: [bodyCell(action.action, 6), bodyCell(action.assignee, 2), bodyCell(action.deadline, 2)] })),
         ];
-        return makeFixedTable([60, 20, 20], rows);
+        return makeFixedTable(Array.from({ length: 10 }, () => 10), rows);
       };
 
       // Closing sections follow the reference template on the final page.
@@ -725,33 +734,55 @@ export default function App() {
         { cells: [bodyCell(form.adjournment)] },
       ]);
 
-      const appendixTable = makeFixedTable([20, 80], [
-        { repeatHeader: true, cells: [headingCell("No."), headingCell("Title of Document / Shared Document Links")] },
+      const appendixTable = makeFixedTable([12, 88], [
+        { cells: [headingCell("Attached Documents (Appendix)", 2)] },
+        { repeatHeader: true, cells: [headingCell("No."), headingCell("Document", 1, AlignmentType.LEFT)] },
         ...form.appendixRows.map((row) => ({ cells: [bodyCell(row.no), bodyCell(row.title)] })),
       ]);
 
-      const approvalTable = makeFixedTable([20, 30, 25, 25], [{
-        cells: [label("Date:"), bodyCell(form.approvalDate), label("Signature:"), bodyCell(" ")],
-      }]);
+      const approvalTable = makeFixedTable([12, 38, 13, 37], [
+        { cells: [headingCell("Approval", 4)] },
+        { cells: [{ text: "The chair of the meeting confirms with their signature that the discussions and decisions were correctly recorded.", span: 4, italic: true }] },
+        { cells: [label("Date"), bodyCell(form.approvalDate), label("Signature"), bodyCell(" ")] },
+      ]);
 
-      const distributionTable = makeFixedTable([50, 50], [{
-        cells: [bodyCell(`• ${form.distribution}`), bodyCell(`Others: ${form.distributionOthers}`)],
-      }]);
+      const noteParagraph = new Paragraph({
+        children: [
+          new TextRun({ text: "NOTE: ", bold: true, size: Math.round(Math.max(fontSize - 1, 8) * 2), font: "Arial", color: "17365D" }),
+          new TextRun({ text: "Attendees are requested to communicate to the author (MoM) any conditions, corrections, or amendments to these minutes. In the event no communication is received within 5 working days of receipt, the minutes are considered approved as written.", size: Math.round(Math.max(fontSize - 1, 8) * 2), font: "Arial", color: "475569" }),
+        ],
+        alignment: toWordAlignment(textAlignment),
+        spacing: { before: 0, after: 0 },
+        keepLines: true,
+      });
+      const distributionRows: WordRowSpec[] = [
+        { cells: [headingCell("Distribution")] },
+        { cells: [bodyCell(form.distribution)] },
+        ...(form.distributionOthers && form.distributionOthers !== "N/A"
+          ? [{ cells: [bodyCell(`Others: ${form.distributionOthers}`)] }]
+          : []),
+        { cells: [{ fill: "F8FAFC", paragraphs: [noteParagraph] }] },
+      ];
+      const distributionTable = makeFixedTable([100], distributionRows);
 
-      const noteTable = makeFixedTable([100], [{
-        cells: [{
-          fill: "F8FAFC",
-          paragraphs: [new Paragraph({
-            children: [
-              new TextRun({ text: "NOTE: ", bold: true, size: Math.round(Math.max(fontSize - 1, 8) * 2), font: "Arial", color: "17365D" }),
-              new TextRun({ text: "Attendees are requested to communicate to the author (MoM) any conditions, corrections, or amendments to these minutes. In the event no communication is received within 5 working days of receipt, the minutes are considered approved as written.", size: Math.round(Math.max(fontSize - 1, 8) * 2), font: "Arial", color: "475569" }),
-            ],
-            alignment: toWordAlignment(textAlignment),
-            spacing: { before: 0, after: 0 },
-            keepLines: true,
-          })],
-        }],
-      }]);
+      const footerTable = makeFixedTable([82, 18], [{
+        cells: [
+          {
+            paragraphs: [headerParagraph([
+              new TextRun({ text: "Electro-Mechanical Systems Engineering Technology (EMSET)", size: 18, font: "Times New Roman", color: "475569" }),
+            ], AlignmentType.LEFT)],
+            alignment: AlignmentType.LEFT,
+          },
+          {
+            paragraphs: [new Paragraph({
+              children: [new TextRun({ children: [PageNumber.CURRENT], size: 18, font: "Times New Roman", color: "475569" })],
+              alignment: AlignmentType.RIGHT,
+              spacing: { before: 0, after: 0 },
+            })],
+            alignment: AlignmentType.RIGHT,
+          },
+        ],
+      }], { widthPercent: 100, borderless: true });
 
       const summaryParagraphs = form.meetingSummary.split("\n").map((line) => line.trim()).filter(Boolean).map((line) =>
         new Paragraph({
@@ -770,39 +801,32 @@ export default function App() {
             page: {
               size: { width: A4_WIDTH_TWIPS, height: A4_HEIGHT_TWIPS },
               margin: {
-                top: convertInchesToTwip(0.8),
+                top: convertInchesToTwip(1.75),
                 right: PAGE_RIGHT_MARGIN_TWIPS,
                 bottom: convertInchesToTwip(0.5),
                 left: PAGE_LEFT_MARGIN_TWIPS,
-                header: convertInchesToTwip(0.15),
+                header: convertInchesToTwip(0.2),
                 footer: convertInchesToTwip(0.3),
               },
             },
           },
           headers: {
             default: new Header({
-              children: [makeFixedTable([18, 64, 18], headerRows, { widthPercent: 100, borderless: true, bottomRule: true })],
+              children: [makeFixedTable([26, 50, 24], headerRows, { widthPercent: 100, borderless: true })],
             }),
           },
           footers: {
-            default: new Footer({
-              children: [new Paragraph({
-                children: [new TextRun({ text: "Page ", size: Math.round(fontSize * 2), font: "Arial", color: "64748B" }), new TextRun({ children: [PageNumber.CURRENT], size: Math.round(fontSize * 2), font: "Arial", color: "64748B" })],
-                alignment: AlignmentType.CENTER,
-                spacing: { before: 0, after: 0 },
-              })],
-            }),
+            default: new Footer({ children: [footerTable] }),
           },
           children: [
-            ...coverTitleParagraphs,
             infoTable,
             spacer(160),
-            makeHeading("Agenda:"),
             agendaTable,
-            makeHeading(`Task Status for Previous Meeting: ${form.taskStatusRef}`, true),
-            taskTable,
+            spacer(3200),
+            taskHeaderTable,
+            new Paragraph({ children: [], pageBreakBefore: true, spacing: { before: 0, after: 0 } }),
+            taskRowsTable,
             spacer(130),
-            makeHeading("Discussion Points:"),
             ...form.discussionPoints.flatMap((point) => [makeDiscussionTable(point), spacer(140)]),
             makeHeading("Meeting Summary:"),
             ...summaryParagraphs,
@@ -812,23 +836,11 @@ export default function App() {
             spacer(100),
             adjournmentTable,
             spacer(110),
-            makeHeading("Approval"),
-            new Paragraph({
-              children: [
-                new TextRun({ text: "The chair of the meeting confirms with their signature that the discussions and decisions were correctly recorded.", size: Math.round(Math.max(fontSize - 1, 8) * 2), italics: true, font: "Arial", color: "475569" }),
-              ],
-              alignment: toWordAlignment(textAlignment),
-              spacing: { before: 0, after: 80 },
-            }),
             approvalTable,
             spacer(120),
-            makeHeading("Attached Documents (Appendix):"),
             appendixTable,
             spacer(120),
-            makeHeading("Distribution"),
             distributionTable,
-            spacer(100),
-            noteTable,
           ],
         }],
       });
@@ -845,7 +857,6 @@ export default function App() {
 
   // ─── Preview Component ────────────────────────────────────────────────────
   const tableWidthStyle = { "--mom-table-width": `${tableWidth}%` } as React.CSSProperties;
-  const coverTitleStyle = { "--mom-font-size": `${fontSize}pt` } as React.CSSProperties;
   const documentStyle = {
     ...tableWidthStyle,
     "--mom-font-size": `${fontSize}pt`,
@@ -855,7 +866,7 @@ export default function App() {
     width: "210mm",
     height: "297mm",
     minHeight: "297mm",
-    padding: "20.32mm 12.7mm 12.7mm",
+    padding: "45mm 12.7mm 12.7mm",
     boxSizing: "border-box",
     display: "flex",
     flexDirection: "column",
@@ -866,25 +877,20 @@ export default function App() {
     <div className="mom-running-header">
       <div className="mom-running-header-row">
         <img src={logo} alt="Institution logo" className="mom-header-logo" />
-        <div className="mom-header-name">{committeeName}</div>
-        <span aria-hidden="true" />
+        <div className="mom-header-center">
+          <div>{committeeName}</div>
+          <div>{form.program} Program, Abu Dhabi Polytechnic</div>
+          <div>{semesterYear}</div>
+          <div>{form.headerMeetingTitle}</div>
+        </div>
+        <div className="mom-header-program"><span>{form.program}</span><span>Program</span></div>
       </div>
-      <div className="mom-header-rule" />
-    </div>
-  );
-
-  const CoverTitle = () => (
-    <div className="mom-cover-title" style={coverTitleStyle}>
-      <div className="mom-cover-group">{committeeName}</div>
-      <div className="mom-cover-program">Program: {form.program}</div>
-      <div className="mom-cover-semester">{semesterYear}</div>
-      <div className="mom-cover-meeting">{form.headerMeetingTitle}</div>
     </div>
   );
 
   const tdBase = "border px-1.5 py-0.5 text-xs align-middle";
   const thBase = "border px-1.5 py-0.5 text-xs font-bold text-center align-middle";
-  const labelCellBase = `${tdBase} mom-label-cell font-bold text-center`;
+  const labelCellBase = `${tdBase} mom-label-cell font-bold`;
 
   return (
     <div className="min-h-screen bg-gray-100 font-sans">
@@ -996,11 +1002,9 @@ export default function App() {
               <DateField label="Date" value={form.date} onChange={(v) => set("date", v)} />
               <Field label="Start Time" value={form.startTime} onChange={(v) => set("startTime", v)} />
               <Field label="End Time" value={form.endTime} onChange={(v) => set("endTime", v)} />
-              <Field label="Minutes No." value={form.minutesNo} onChange={(v) => set("minutesNo", v)} />
-              <Field label="Place" value={form.place} onChange={(v) => set("place", v)} />
-              <Field label="Facilitator" value={form.facilitator} onChange={(v) => set("facilitator", v)} />
+              <Field label="Location" value={form.place} onChange={(v) => set("place", v)} />
+              <Field label="Meeting Facilitator" value={form.facilitator} onChange={(v) => set("facilitator", v)} />
               <Field label="Minutes By" value={form.minutesBy} onChange={(v) => set("minutesBy", v)} />
-              <Field label="Attendees (header)" value={form.attendees} onChange={(v) => set("attendees", v)} className="md:col-span-2" />
             </div>
           </Section>
 
@@ -1011,7 +1015,7 @@ export default function App() {
                 <thead>
                   <tr className="bg-gray-100">
                     <th className="border p-2 text-left">Name</th>
-                    <th className="border p-2 text-left">Role</th>
+                    <th className="border p-2 text-left">Designation</th>
                     <th className="border p-2 text-left">Endorsement</th>
                     <th className="border p-2 w-10"></th>
                   </tr>
@@ -1206,7 +1210,7 @@ export default function App() {
                 >{generating ? "⏳" : "📝"} Word</button>
               </div>
             </div>
-            <p className="mt-3 text-xs text-slate-500">These settings apply to both downloads. The document uses A4 with Narrow-style 0.5″ side and bottom margins and a 0.8″ top margin for the running header. Use a wider table for long entries, or reduce the font size to keep dense pages compact.</p>
+            <p className="mt-3 text-xs text-slate-500">These settings apply to both downloads. The document uses A4 with 0.5″ side and bottom margins and a 1.75″ top area for the full running header shown in the template. Use a wider table for long entries, or reduce the font size to keep dense pages compact.</p>
           </div>
 
           {/* Preview Pages */}
@@ -1214,70 +1218,64 @@ export default function App() {
             {/* Page 1 */}
             <div className="mom-page bg-white shadow-xl rounded-lg mx-auto" style={pageStyle}>
               <PreviewHeader />
-              <CoverTitle />
-              <div className="mom-content" style={documentStyle}>
-                {/* Info Table */}
+              <div className="mom-content mom-page-one-content" style={documentStyle}>
                 <table className="mom-table w-full border-collapse mb-4">
                   <colgroup>
-                    {[18, 16, 16, 17, 16, 17].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+                    {[15, 15, 15, 15, 10, 10, 10, 10].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
                   </colgroup>
                   <tbody>
                     <tr>
-                      <td className={labelCellBase}>Meeting Title:</td>
-                      <td className={tdBase} colSpan={2}>{form.meetingTitle}</td>
-                      <td className={labelCellBase}>Meeting Ref:</td>
+                      <td className={labelCellBase} colSpan={2}>Meeting Title</td>
+                      <td className={tdBase} colSpan={6}>{form.meetingTitle}</td>
+                    </tr>
+                    <tr>
+                      <td className={labelCellBase} colSpan={2}>Semester / Academic Year</td>
+                      <td className={tdBase} colSpan={2}>{semesterYear}</td>
+                      <td className={labelCellBase} colSpan={2}>Meeting Ref:</td>
                       <td className={tdBase} colSpan={2}>{form.meetingRef}</td>
                     </tr>
                     <tr>
-                      <td className={labelCellBase}>Date:</td>
-                      <td className={tdBase}>{form.date}</td>
-                      <td className={tdBase} colSpan={2}>Start: {form.startTime}</td>
-                      <td className={tdBase} colSpan={2}>End: {form.endTime}</td>
+                      <td className={labelCellBase} colSpan={2}>Date of Meeting</td>
+                      <td className={tdBase} colSpan={2}>{form.date}</td>
+                      <td className={labelCellBase}>Start:</td>
+                      <td className={tdBase}>{form.startTime}</td>
+                      <td className={labelCellBase}>End:</td>
+                      <td className={tdBase}>{form.endTime}</td>
                     </tr>
                     <tr>
-                      <td className={labelCellBase}>Semester:</td>
-                      <td className={tdBase} colSpan={2}>{semesterYear}</td>
-                      <td className={labelCellBase}>Minutes #:</td>
-                      <td className={tdBase} colSpan={2}>{form.minutesNo}</td>
+                      <td className={labelCellBase} colSpan={2}>Location</td>
+                      <td className={tdBase} colSpan={6}>{form.place}</td>
                     </tr>
                     <tr>
-                      <td className={labelCellBase}>Place:</td>
-                      <td className={tdBase} colSpan={5}>{form.place}</td>
-                    </tr>
-                    <tr>
-                      <td className={labelCellBase}>Facilitator:</td>
+                      <td className={labelCellBase} colSpan={2}>Meeting Facilitator</td>
                       <td className={tdBase} colSpan={2}>{form.facilitator}</td>
-                      <td className={labelCellBase}>Minutes by:</td>
+                      <td className={labelCellBase} colSpan={2}>Minutes by</td>
                       <td className={tdBase} colSpan={2}>{form.minutesBy}</td>
                     </tr>
-                    <tr>
-                      <td className={labelCellBase}>Attendees:</td>
-                      <td className={tdBase} colSpan={5}>{form.attendees}</td>
-                    </tr>
+                    <tr><td className={labelCellBase} colSpan={8}>Attendees</td></tr>
                     <tr>
                       <td className={thBase} colSpan={2}>Name</td>
-                      <td className={thBase} colSpan={2}>Members / Guest</td>
-                      <td className={thBase} colSpan={2}>Endorsement<br />(Approve or Need Clarification)</td>
+                      <td className={thBase} colSpan={2}>Designation</td>
+                      <td className={thBase} colSpan={4}>Endorsement<br />(Approved / Needs modification)</td>
                     </tr>
                     {form.attendeeRows.map((r) => (
                       <tr key={r.id}>
                         <td className={tdBase} colSpan={2}>{r.name}</td>
                         <td className={tdBase} colSpan={2}>{r.role}</td>
-                        <td className={tdBase} colSpan={2}>{r.endorsement}</td>
+                        <td className={tdBase} colSpan={4}>{r.endorsement}</td>
                       </tr>
                     ))}
                     <tr>
-                      <td className={`${labelCellBase} italic`}>Excused:</td>
-                      <td className={tdBase} colSpan={5}>{form.excused}</td>
+                      <td className={`${labelCellBase} italic`} colSpan={2}>Excused:</td>
+                      <td className={tdBase} colSpan={6}>{form.excused}</td>
                     </tr>
                   </tbody>
                 </table>
 
-                {/* Agenda */}
-                <div className="mom-section-heading mb-1">Agenda:</div>
-                <table className="mom-table w-full border-collapse">
+                <table className="mom-table w-full border-collapse mb-2">
                   <colgroup><col style={{ width: "12%" }} /><col style={{ width: "88%" }} /></colgroup>
                   <thead>
+                    <tr><th className={thBase} colSpan={2}>AGENDA</th></tr>
                     <tr>
                       <th className={thBase}>Item No.</th>
                       <th className={thBase}>Subject (Standing Agenda)</th>
@@ -1292,67 +1290,61 @@ export default function App() {
                     ))}
                   </tbody>
                 </table>
+
+                <table className="mom-table mom-task-status-header w-full border-collapse">
+                  <colgroup><col style={{ width: "75%" }} /><col style={{ width: "25%" }} /></colgroup>
+                  <thead>
+                    <tr><th className={`${thBase} mom-task-title`} colSpan={2}>Task Status for Previous Meeting: {form.taskStatusRef}</th></tr>
+                    <tr><th className={thBase}>Items Discussed</th><th className={thBase}>Task Status</th></tr>
+                  </thead>
+                </table>
               </div>
-              <div className="mom-page-footer text-center text-xs">1</div>
+              <div className="mom-page-footer"><span>Electro-Mechanical Systems Engineering Technology (EMSET)</span><span>1</span></div>
             </div>
 
             {/* Page 2 */}
             <div className="mom-page bg-white shadow-xl rounded-lg mx-auto" style={pageStyle}>
               <PreviewHeader />
               <div className="mom-content" style={documentStyle}>
-                <div className="mom-section-heading mb-2">Task Status for Previous Meeting: {form.taskStatusRef}</div>
-                <table className="mom-table w-full border-collapse mb-4">
-                  <colgroup><col style={{ width: "75%" }} /><col style={{ width: "25%" }} /></colgroup>
-                  <thead>
-                    <tr>
-                      <th className={thBase}>Items Discussed</th>
-                      <th className={thBase}>Task Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {form.taskStatusRows.map((r) => (
-                      <tr key={r.id}>
-                        <td className={tdBase}>{r.item}</td>
-                        <td className={tdBase}>{r.status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {form.taskStatusRows.length > 0 && (
+                  <table className="mom-table w-full border-collapse mb-4">
+                    <colgroup><col style={{ width: "75%" }} /><col style={{ width: "25%" }} /></colgroup>
+                    <tbody>
+                      {form.taskStatusRows.map((r) => (
+                        <tr key={r.id}>
+                          <td className={tdBase}>{r.item}</td>
+                          <td className={tdBase}>{r.status}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
 
-                <div className="mom-section-heading mb-2">Discussion Points:</div>
                 {form.discussionPoints.map((dp) => (
-                  <div key={dp.id} className="mb-2">
+                  <div key={dp.id} className="mb-3">
                     <table className="mom-table w-full border-collapse">
-                      <colgroup><col style={{ width: "60%" }} /><col style={{ width: "20%" }} /><col style={{ width: "20%" }} /></colgroup>
+                      <colgroup>{Array.from({ length: 10 }, (_, index) => <col key={index} style={{ width: "10%" }} />)}</colgroup>
                       <tbody>
+                        <tr><td className={`${thBase} discussion-title`} colSpan={10}>{dp.title}</td></tr>
                         <tr>
-                          <td className={`${thBase} discussion-title`} colSpan={3}>{dp.title}</td>
+                          <th className={thBase} colSpan={5}>Discussion</th>
+                          <th className={thBase} colSpan={5}>Decision</th>
                         </tr>
                         <tr>
-                          <td className={`${tdBase} discussion-label`} colSpan={3}>Discussion:</td>
+                          <td className={tdBase} colSpan={5} style={{ minHeight: 40, height: 40 }}>{dp.discussion ? `• ${dp.discussion}` : ""}</td>
+                          <td className={tdBase} colSpan={5} style={{ minHeight: 40, height: 40 }}>{dp.decision ? `• ${dp.decision}` : ""}</td>
                         </tr>
+                        <tr><th className={thBase} colSpan={10}>Action Plan</th></tr>
                         <tr>
-                          <td className={tdBase} colSpan={3} style={{ minHeight: 35, height: 35 }}>{dp.discussion}</td>
-                        </tr>
-                        <tr>
-                          <td className={`${tdBase} discussion-label`} colSpan={3}>Decision:</td>
-                        </tr>
-                        <tr>
-                          <td className={tdBase} colSpan={3} style={{ minHeight: 28, height: 28 }}>{dp.decision}</td>
-                        </tr>
-                        <tr>
-                          <td className={`${tdBase} discussion-label`} colSpan={3}>Task to be Completed:</td>
-                        </tr>
-                        <tr>
-                          <th className={thBase}>Action</th>
-                          <th className={`${thBase} w-24`}>Assignee</th>
-                          <th className={`${thBase} w-24`}>Deadline</th>
+                          <th className={thBase} colSpan={6}>Action item</th>
+                          <th className={thBase} colSpan={2}>Assignee</th>
+                          <th className={thBase} colSpan={2}>Deadline</th>
                         </tr>
                         {dp.actions.map((a, ai) => (
                           <tr key={ai}>
-                            <td className={tdBase}>{a.action}</td>
-                            <td className={tdBase}>{a.assignee}</td>
-                            <td className={tdBase}>{a.deadline}</td>
+                            <td className={tdBase} colSpan={6}>{a.action}</td>
+                            <td className={tdBase} colSpan={2}>{a.assignee}</td>
+                            <td className={tdBase} colSpan={2}>{a.deadline}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1366,7 +1358,7 @@ export default function App() {
                   ))}
                 </ul>
               </div>
-              <div className="mom-page-footer text-center text-xs">2</div>
+              <div className="mom-page-footer"><span>Electro-Mechanical Systems Engineering Technology (EMSET)</span><span>2</span></div>
             </div>
 
             {/* Page 3 */}
@@ -1385,33 +1377,30 @@ export default function App() {
                   <tbody><tr><td className={tdBase}>{form.adjournment}</td></tr></tbody>
                 </table>
 
-                <div className="mom-approval-copy mb-1">
-                  <span className="font-bold">Approval </span>
-                  <span className="italic">(The chair of the meeting confirms with their signature that the discussions and decisions were correctly recorded)</span>
-                </div>
                 <table className="mom-table w-full border-collapse mb-4">
                   <colgroup>
-                    <col style={{ width: "20%" }} /><col style={{ width: "30%" }} />
-                    <col style={{ width: "25%" }} /><col style={{ width: "25%" }} />
+                    <col style={{ width: "12%" }} /><col style={{ width: "38%" }} />
+                    <col style={{ width: "13%" }} /><col style={{ width: "37%" }} />
                   </colgroup>
                   <tbody>
+                    <tr><th className={thBase} colSpan={4} style={{ textAlign: "left" }}>Approval</th></tr>
                     <tr>
-                      <td className={labelCellBase}>Date:</td>
+                      <td className={`${tdBase} italic`} colSpan={4}>The chair of the meeting confirms with their signature that the discussions and decisions were correctly recorded.</td>
+                    </tr>
+                    <tr>
+                      <td className={labelCellBase}>Date</td>
                       <td className={tdBase}>{form.approvalDate}</td>
-                      <td className={labelCellBase}>Signature:</td>
+                      <td className={labelCellBase}>Signature</td>
                       <td className={tdBase}></td>
                     </tr>
                   </tbody>
                 </table>
 
-                <div className="mom-section-heading mb-1">Attached Documents (Appendix):</div>
                 <table className="mom-table w-full border-collapse mb-4">
-                  <colgroup><col style={{ width: "20%" }} /><col style={{ width: "80%" }} /></colgroup>
+                  <colgroup><col style={{ width: "12%" }} /><col style={{ width: "88%" }} /></colgroup>
                   <thead>
-                    <tr>
-                      <th className={thBase}>No.</th>
-                      <th className={thBase}>Document / Shared Document Link</th>
-                    </tr>
+                    <tr><th className={thBase} colSpan={2} style={{ textAlign: "left" }}>Attached Documents (Appendix)</th></tr>
+                    <tr><th className={thBase}>No.</th><th className={thBase} style={{ textAlign: "left" }}>Document</th></tr>
                   </thead>
                   <tbody>
                     {form.appendixRows.map((r) => (
@@ -1423,20 +1412,14 @@ export default function App() {
                   </tbody>
                 </table>
 
-                <div className="mom-section-heading mb-1">Distribution</div>
-                <table className="mom-table w-full border-collapse mb-3">
-                  <colgroup><col style={{ width: "50%" }} /><col style={{ width: "50%" }} /></colgroup>
-                  <tbody>
-                    <tr>
-                      <td className={tdBase}>• {form.distribution}</td>
-                      <td className={tdBase}>Others: {form.distributionOthers}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
                 <table className="mom-table w-full border-collapse">
                   <colgroup><col style={{ width: "100%" }} /></colgroup>
+                  <thead><tr><th className={thBase} style={{ textAlign: "left" }}>Distribution</th></tr></thead>
                   <tbody>
+                    <tr><td className={tdBase}>{form.distribution}</td></tr>
+                    {form.distributionOthers && form.distributionOthers !== "N/A" && (
+                      <tr><td className={tdBase}>Others: {form.distributionOthers}</td></tr>
+                    )}
                     <tr>
                       <td className={`${tdBase} mom-note-cell`}>
                         <span className="font-bold mom-note-label">NOTE: </span>
@@ -1446,7 +1429,7 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
-              <div className="mom-page-footer text-center text-xs">3</div>
+              <div className="mom-page-footer"><span>Electro-Mechanical Systems Engineering Technology (EMSET)</span><span>3</span></div>
             </div>
           </div>
         </div>

@@ -57,7 +57,7 @@ select:focus-visible {
 
 .mom-running-header {
   position: absolute;
-  top: 3.8mm;
+  top: 7mm;
   right: 12.7mm;
   left: 12.7mm;
   z-index: 1;
@@ -65,66 +65,53 @@ select:focus-visible {
 
 .mom-running-header-row {
   display: grid;
-  grid-template-columns: 22mm minmax(0, 1fr) 22mm;
+  grid-template-columns: 48mm minmax(0, 1fr) 32mm;
   align-items: center;
-  min-height: 12mm;
+  min-height: 28mm;
 }
 
 .mom-header-logo {
   display: block;
-  max-width: 20mm;
-  max-height: 11mm;
+  max-width: 45mm;
+  max-height: 24mm;
   object-fit: contain;
-  justify-self: center;
+  justify-self: start;
 }
 
-.mom-header-name {
-  overflow: hidden;
-  color: #334155;
-  font-size: 9pt;
+.mom-header-center {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  color: #111827;
+  font-size: 11.5pt;
   font-weight: 700;
-  line-height: 1.2;
-  text-align: center;
-  text-overflow: ellipsis;
-}
-
-.mom-header-rule {
-  margin-top: 1mm;
-  border-bottom: 1px solid #8b95a3;
-}
-
-.mom-cover-title {
-  width: 100%;
-  flex: none;
-  margin: 0 0 4mm;
-  color: #1f2937;
-  line-height: 1.2;
+  line-height: 1.12;
   text-align: center;
 }
 
-.mom-cover-group {
-  margin-bottom: 1.1mm;
-  color: #172033;
-  font-size: calc(var(--mom-font-size, 9pt) + 4pt);
-  font-weight: 700;
+.mom-header-center > div + div {
+  margin-top: 0.7mm;
 }
 
-.mom-cover-program {
-  margin-bottom: 0.8mm;
-  font-size: calc(var(--mom-font-size, 9pt) + 1pt);
+.mom-header-program {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #111827;
+  font-size: 11.5pt;
   font-weight: 700;
+  line-height: 1.12;
+  text-align: center;
 }
 
-.mom-cover-semester {
-  margin-bottom: 0.8mm;
-  font-size: var(--mom-font-size, 9pt);
-  font-weight: 700;
+.mom-page-one-content {
+  display: flex;
+  flex-direction: column;
 }
 
-.mom-cover-meeting {
-  color: #17365d;
-  font-size: calc(var(--mom-font-size, 9pt) + 2pt);
-  font-weight: 700;
+.mom-page .mom-task-status-header {
+  margin-top: auto !important;
 }
 
 .mom-content {
@@ -150,7 +137,7 @@ select:focus-visible {
 .mom-page .mom-table td {
   padding: 4px 6px;
   line-height: 1.35;
-  border: 1px solid #8795a8;
+  border: 1px solid #111827;
   overflow-wrap: anywhere;
   word-break: normal;
   vertical-align: middle;
@@ -161,25 +148,31 @@ select:focus-visible {
 }
 
 .mom-page .mom-table th {
-  color: #17365d;
-  background: #dce6f1;
+  color: #111827;
+  background: #d9d9d9;
   font-weight: 700;
 }
 
 .mom-page .mom-table td.mom-label-cell,
 .mom-page .mom-table td.discussion-label {
-  color: #17365d;
-  background: #e8eef5;
+  color: #111827;
+  background: #e5e5e5;
   font-weight: 700;
 }
 
+.mom-page .mom-table th.mom-task-title {
+  background: #cfcfcf;
+}
+
+.mom-page .mom-table td.mom-label-cell,
 .mom-page .mom-table td.discussion-label {
   text-align: left;
 }
 
 .mom-page .mom-table td.discussion-title {
-  color: #fff;
-  background: #17365d;
+  color: #111827;
+  background: #bdbdbd;
+  font-weight: 700;
 }
 
 .mom-page .mom-table td.mom-note-cell {
@@ -192,7 +185,7 @@ select:focus-visible {
 
 .mom-section-heading {
   margin-top: 0;
-  color: #17365d;
+  color: #111827;
   font-size: calc(var(--mom-font-size, 9pt) + 2pt);
   font-weight: 700;
   line-height: 1.2;
@@ -204,19 +197,17 @@ select:focus-visible {
   line-height: 1.35;
 }
 
-.mom-approval-copy {
-  font-size: var(--mom-font-size, 9pt);
-  line-height: 1.3;
-}
-
 .mom-page .mom-page-footer {
   position: absolute;
-  right: 0;
-  bottom: 5mm;
-  left: 0;
-  flex: none;
-  color: #64748b;
-  font-size: calc(var(--mom-font-size, 9pt) * 0.8);
+  right: 12.7mm;
+  bottom: 7mm;
+  left: 12.7mm;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #475569;
+  font-family: "Times New Roman", serif;
+  font-size: 8.5pt;
 }
 
 .preview-shell {
