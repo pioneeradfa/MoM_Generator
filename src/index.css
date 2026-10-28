@@ -105,20 +105,20 @@ select:focus-visible {
   text-align: center;
 }
 
-.mom-page-one-content {
-  display: flex;
-  flex-direction: column;
-}
-
-.mom-page .mom-task-status-header {
-  margin-top: auto !important;
-}
-
 .mom-content {
   width: 100%;
   flex: 1 0 auto;
   --mom-table-width: 100%;
   --mom-font-size: 9pt;
+}
+
+.mom-page-three-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.mom-page-three-content .mom-document-control {
+  margin-top: auto !important;
 }
 
 .mom-page .mom-table {
@@ -164,6 +164,15 @@ select:focus-visible {
   background: #cfcfcf;
 }
 
+.mom-page .mom-table th.mom-section-title {
+  background: #b7b7b7;
+}
+
+.mom-page .mom-table td.mom-document-control-title {
+  background: #d9d9d9;
+  font-weight: 700;
+}
+
 .mom-page .mom-table td.mom-label-cell,
 .mom-page .mom-table td.discussion-label {
   text-align: left;
@@ -205,6 +214,8 @@ select:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding-top: 2mm;
+  border-top: 1px solid #cbd5e1;
   color: #475569;
   font-family: "Times New Roman", serif;
   font-size: 8.5pt;

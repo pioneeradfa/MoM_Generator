@@ -62,6 +62,12 @@ interface FormData {
   approvalDate: string;
   distribution: string;
   distributionOthers: string;
+  documentControlTitle: string;
+  formOwner: string;
+  reviewedDate: string;
+  lastVersion: string;
+  documentVersion: string;
+  footerText: string;
   focusGroupName: string;
   otherCommitteeName: string;
   program: string;
@@ -179,8 +185,14 @@ const defaultForm: FormData = {
     { id: "C", no: "3.", title: "" },
   ],
   approvalDate: "",
-  distribution: "To all Attendees",
+  distribution: "To all Attendees:",
   distributionOthers: "N/A",
+  documentControlTitle: "Meeting Minutes Template",
+  formOwner: "EMSET Program: QA Committee",
+  reviewedDate: "Oct 2026",
+  lastVersion: "Oct 2025",
+  documentVersion: "1.0",
+  footerText: "Electro-Mechanical Systems Engineering Technology (EMSET) | MoM_EMSET_AY2026_V1.0",
   focusGroupName: "Intelligent system focus group",
   otherCommitteeName: "",
   program: "EMSET",
@@ -572,7 +584,7 @@ export default function App() {
       const makeFixedTable = (
         columnWeights: number[],
         rowSpecs: WordRowSpec[],
-        options: { widthPercent?: number; borderless?: boolean; bottomRule?: boolean } = {}
+        options: { widthPercent?: number; borderless?: boolean; bottomRule?: boolean; topRule?: boolean } = {}
       ) => {
         const widthPercent = Math.max(70, Math.min(100, options.widthPercent ?? tableWidth));
         const tableTwipsWidth = Math.round(PAGE_CONTENT_WIDTH_TWIPS * widthPercent / 100);
@@ -585,8 +597,14 @@ export default function App() {
           remainingWidth -= width;
           return width;
         });
-        const headerRuleBorders = { ...noCellBorders, bottom: cellBorder(BorderStyle.SINGLE, 5, "8492A6") };
-        const borders = options.borderless ? (options.bottomRule ? headerRuleBorders : noCellBorders) : allBorders;
+        const ruleBorders = {
+          ...noCellBorders,
+          top: options.topRule ? cellBorder(BorderStyle.SINGLE, 5, "CBD5E1") : noCellBorders.top,
+          bottom: options.bottomRule ? cellBorder(BorderStyle.SINGLE, 5, "8492A6") : noCellBorders.bottom,
+        };
+        const borders = options.borderless
+          ? (options.topRule || options.bottomRule ? ruleBorders : noCellBorders)
+          : allBorders;
 
         const makeCell = (cell: WordCellSpec, rowIndex: number, startColumn: number) => {
           const span = cell.span ?? 1;
@@ -667,21 +685,16 @@ export default function App() {
         text: string,
         span = 1,
         alignment: (typeof AlignmentType)[keyof typeof AlignmentType] = AlignmentType.CENTER,
+        fill = "D9D9D9",
       ): WordCellSpec => ({
         text,
         span,
         bold: true,
-        fill: "D9D9D9",
+        fill,
         color: "111827",
         alignment,
       });
       const bodyCell = (text: string, span = 1): WordCellSpec => ({ text, span });
-      const makeHeading = (text: string, pageBreakBefore = false) => new Paragraph({
-        children: [new TextRun({ text, bold: true, size: Math.round(Math.max(fontSize + 2, 10) * 2), font: "Arial", color: "111827" })],
-        spacing: { before: 70, after: 90 },
-        keepNext: true,
-        pageBreakBefore,
-      });
       const spacer = (after = 140) => new Paragraph({ children: [], spacing: { after } });
       // Page 1 uses one fixed eight-column grid so all template row spans line up consistently.
       const infoRows: WordRowSpec[] = [
@@ -703,19 +716,19 @@ export default function App() {
         ...form.agendaItems.map((item, index) => ({ cells: [bodyCell(`${index + 1}.`), bodyCell(item.subject)] })),
       ]);
 
-      const taskHeaderTable = makeFixedTable([75, 25], [
-        { cells: [headingCell(`Task Status for Previous Meeting: ${form.taskStatusRef}`, 2)] },
-        { cells: [headingCell("Items Discussed"), headingCell("Task Status")] },
-      ]);
       const taskRows = form.taskStatusRows.length
         ? form.taskStatusRows.map((row) => ({ cells: [bodyCell(row.item), bodyCell(row.status)] }))
         : [{ cells: [bodyCell(" "), bodyCell(" ")] }];
-      const taskRowsTable = makeFixedTable([75, 25], taskRows);
+      const taskTable = makeFixedTable([75, 25], [
+        { cells: [headingCell(`Task Status for Previous Meeting: ${form.taskStatusRef}`, 2)] },
+        { repeatHeader: true, cells: [headingCell("Items Discussed", 1, AlignmentType.LEFT), headingCell("Task Status")] },
+        ...taskRows,
+      ]);
 
       const makeDiscussionTable = (point: DiscussionPoint) => {
         const rows: WordRowSpec[] = [
           { cells: [{ text: point.title || "Discussion point", span: 10, bold: true, fill: "D9D9D9", color: "111827", alignment: AlignmentType.CENTER }] },
-          { cells: [headingCell("Discussion", 5), headingCell("Decision", 5)] },
+          { cells: [headingCell("Discussion", 5, AlignmentType.LEFT), headingCell("Decision", 5, AlignmentType.LEFT)] },
           { minHeight: convertMillimetersToTwip(13), cells: [bodyCell(point.discussion ? `• ${point.discussion}` : " ", 5), bodyCell(point.decision ? `• ${point.decision}` : " ", 5)] },
           { cells: [headingCell("Action Plan", 10)] },
           { repeatHeader: true, cells: [headingCell("Action item", 6), headingCell("Assignee", 2), headingCell("Deadline", 2)] },
@@ -726,24 +739,23 @@ export default function App() {
 
       // Closing sections follow the reference template on the final page.
       const nextMeetingTable = makeFixedTable([100], [
-        { cells: [label("Next Meeting", 1, AlignmentType.LEFT)] },
+        { cells: [headingCell("Next Meeting", 1, AlignmentType.LEFT, "B7B7B7")] },
         { cells: [bodyCell(form.nextMeeting)] },
       ]);
       const adjournmentTable = makeFixedTable([100], [
-        { cells: [label("Adjournment", 1, AlignmentType.LEFT)] },
+        { cells: [headingCell("Adjournment", 1, AlignmentType.LEFT, "B7B7B7")] },
         { cells: [bodyCell(form.adjournment)] },
       ]);
 
       const appendixTable = makeFixedTable([12, 88], [
-        { cells: [headingCell("Attached Documents (Appendix)", 2)] },
+        { cells: [headingCell("Attached Documents (Appendix)", 2, AlignmentType.LEFT, "B7B7B7")] },
         { repeatHeader: true, cells: [headingCell("No."), headingCell("Document", 1, AlignmentType.LEFT)] },
         ...form.appendixRows.map((row) => ({ cells: [bodyCell(row.no), bodyCell(row.title)] })),
       ]);
 
       const approvalTable = makeFixedTable([12, 38, 13, 37], [
-        { cells: [headingCell("Approval", 4)] },
-        { cells: [{ text: "The chair of the meeting confirms with their signature that the discussions and decisions were correctly recorded.", span: 4, italic: true }] },
-        { cells: [label("Date"), bodyCell(form.approvalDate), label("Signature"), bodyCell(" ")] },
+        { cells: [headingCell("Approval", 4, AlignmentType.LEFT, "B7B7B7")] },
+        { cells: [label("Signature"), bodyCell(" "), label("Date"), bodyCell(form.approvalDate)] },
       ]);
 
       const noteParagraph = new Paragraph({
@@ -756,7 +768,7 @@ export default function App() {
         keepLines: true,
       });
       const distributionRows: WordRowSpec[] = [
-        { cells: [headingCell("Distribution")] },
+        { cells: [headingCell("Distribution", 1, AlignmentType.LEFT, "B7B7B7")] },
         { cells: [bodyCell(form.distribution)] },
         ...(form.distributionOthers && form.distributionOthers !== "N/A"
           ? [{ cells: [bodyCell(`Others: ${form.distributionOthers}`)] }]
@@ -769,20 +781,23 @@ export default function App() {
         cells: [
           {
             paragraphs: [headerParagraph([
-              new TextRun({ text: "Electro-Mechanical Systems Engineering Technology (EMSET)", size: 18, font: "Times New Roman", color: "475569" }),
+              new TextRun({ text: form.footerText, size: 18, font: "Times New Roman", color: "475569" }),
             ], AlignmentType.LEFT)],
             alignment: AlignmentType.LEFT,
           },
           {
             paragraphs: [new Paragraph({
-              children: [new TextRun({ children: [PageNumber.CURRENT], size: 18, font: "Times New Roman", color: "475569" })],
+              children: [
+                new TextRun({ children: [PageNumber.CURRENT], size: 18, font: "Times New Roman", color: "475569" }),
+                new TextRun({ text: " | P a g e", size: 18, font: "Times New Roman", color: "475569" }),
+              ],
               alignment: AlignmentType.RIGHT,
               spacing: { before: 0, after: 0 },
             })],
             alignment: AlignmentType.RIGHT,
           },
         ],
-      }], { widthPercent: 100, borderless: true });
+      }], { widthPercent: 100, borderless: true, topRule: true });
 
       const summaryParagraphs = form.meetingSummary.split("\n").map((line) => line.trim()).filter(Boolean).map((line) =>
         new Paragraph({
@@ -792,6 +807,19 @@ export default function App() {
           keepLines: true,
         })
       );
+      const summaryTable = makeFixedTable([100], [
+        { cells: [headingCell("Meeting Summary", 1, AlignmentType.LEFT, "B7B7B7")] },
+        {
+          minHeight: convertMillimetersToTwip(17),
+          cells: [{ paragraphs: summaryParagraphs.length ? summaryParagraphs : [new Paragraph({ children: [new TextRun({ text: " " })] })] }],
+        },
+      ]);
+
+      const documentControlTable = makeFixedTable([20, 38, 20, 22], [
+        { cells: [headingCell("Document Control:", 1, AlignmentType.LEFT), { text: form.documentControlTitle, span: 3, fill: "D9D9D9" }] },
+        { cells: [label("Form Owner"), bodyCell(form.formOwner), label("Reviewed Date:"), bodyCell(form.reviewedDate)] },
+        { cells: [label("Last Version:"), bodyCell(form.lastVersion), label("Version"), bodyCell(form.documentVersion)] },
+      ]);
 
       const doc = new Document({
         title: `Minutes of Meeting - ${form.meetingRef || "Meeting"}`,
@@ -822,16 +850,13 @@ export default function App() {
             infoTable,
             spacer(160),
             agendaTable,
-            spacer(3200),
-            taskHeaderTable,
             new Paragraph({ children: [], pageBreakBefore: true, spacing: { before: 0, after: 0 } }),
-            taskRowsTable,
+            taskTable,
             spacer(130),
             ...form.discussionPoints.flatMap((point) => [makeDiscussionTable(point), spacer(140)]),
-            makeHeading("Meeting Summary:"),
-            ...summaryParagraphs,
-            spacer(120),
             new Paragraph({ children: [], pageBreakBefore: true, spacing: { before: 0, after: 0 } }),
+            summaryTable,
+            spacer(120),
             nextMeetingTable,
             spacer(100),
             adjournmentTable,
@@ -841,6 +866,8 @@ export default function App() {
             appendixTable,
             spacer(120),
             distributionTable,
+            spacer(3600),
+            documentControlTable,
           ],
         }],
       });
@@ -866,7 +893,7 @@ export default function App() {
     width: "210mm",
     height: "297mm",
     minHeight: "297mm",
-    padding: "45mm 12.7mm 12.7mm",
+    padding: "45mm 12.7mm 20mm",
     boxSizing: "border-box",
     display: "flex",
     flexDirection: "column",
@@ -992,6 +1019,18 @@ export default function App() {
               </div>
               {logoError && <p role="alert" className="mt-3 text-sm text-rose-700">{logoError}</p>}
             </div>
+          </Section>
+
+          <Section title="Document Control & Footer">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="Document Control Title" value={form.documentControlTitle} onChange={(v) => set("documentControlTitle", v)} />
+              <Field label="Form Owner" value={form.formOwner} onChange={(v) => set("formOwner", v)} />
+              <Field label="Reviewed Date" value={form.reviewedDate} onChange={(v) => set("reviewedDate", v)} />
+              <Field label="Last Version" value={form.lastVersion} onChange={(v) => set("lastVersion", v)} />
+              <Field label="Version" value={form.documentVersion} onChange={(v) => set("documentVersion", v)} />
+              <Field label="Footer Text" value={form.footerText} onChange={(v) => set("footerText", v)} className="md:col-span-2" />
+            </div>
+            <p className="mt-3 text-xs text-slate-500">These values are editable and appear in the final control table and footer.</p>
           </Section>
 
           {/* Section: Meeting Info */}
@@ -1218,7 +1257,7 @@ export default function App() {
             {/* Page 1 */}
             <div className="mom-page bg-white shadow-xl rounded-lg mx-auto" style={pageStyle}>
               <PreviewHeader />
-              <div className="mom-content mom-page-one-content" style={documentStyle}>
+              <div className="mom-content" style={documentStyle}>
                 <table className="mom-table w-full border-collapse mb-4">
                   <colgroup>
                     {[15, 15, 15, 15, 10, 10, 10, 10].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
@@ -1291,34 +1330,29 @@ export default function App() {
                   </tbody>
                 </table>
 
-                <table className="mom-table mom-task-status-header w-full border-collapse">
-                  <colgroup><col style={{ width: "75%" }} /><col style={{ width: "25%" }} /></colgroup>
-                  <thead>
-                    <tr><th className={`${thBase} mom-task-title`} colSpan={2}>Task Status for Previous Meeting: {form.taskStatusRef}</th></tr>
-                    <tr><th className={thBase}>Items Discussed</th><th className={thBase}>Task Status</th></tr>
-                  </thead>
-                </table>
               </div>
-              <div className="mom-page-footer"><span>Electro-Mechanical Systems Engineering Technology (EMSET)</span><span>1</span></div>
+              <div className="mom-page-footer"><span>{form.footerText}</span><span>1 | P a g e</span></div>
             </div>
 
             {/* Page 2 */}
             <div className="mom-page bg-white shadow-xl rounded-lg mx-auto" style={pageStyle}>
               <PreviewHeader />
               <div className="mom-content" style={documentStyle}>
-                {form.taskStatusRows.length > 0 && (
-                  <table className="mom-table w-full border-collapse mb-4">
-                    <colgroup><col style={{ width: "75%" }} /><col style={{ width: "25%" }} /></colgroup>
-                    <tbody>
-                      {form.taskStatusRows.map((r) => (
-                        <tr key={r.id}>
-                          <td className={tdBase}>{r.item}</td>
-                          <td className={tdBase}>{r.status}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                <table className="mom-table w-full border-collapse mb-4">
+                  <colgroup><col style={{ width: "75%" }} /><col style={{ width: "25%" }} /></colgroup>
+                  <thead>
+                    <tr><th className={`${thBase} mom-task-title`} colSpan={2}>Task Status for Previous Meeting: {form.taskStatusRef}</th></tr>
+                    <tr><th className={thBase} style={{ textAlign: "left" }}>Items Discussed</th><th className={thBase}>Task Status</th></tr>
+                  </thead>
+                  <tbody>
+                    {form.taskStatusRows.map((r) => (
+                      <tr key={r.id}>
+                        <td className={tdBase}>{r.item}</td>
+                        <td className={tdBase}>{r.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
 
                 {form.discussionPoints.map((dp) => (
                   <div key={dp.id} className="mb-3">
@@ -1327,8 +1361,8 @@ export default function App() {
                       <tbody>
                         <tr><td className={`${thBase} discussion-title`} colSpan={10}>{dp.title}</td></tr>
                         <tr>
-                          <th className={thBase} colSpan={5}>Discussion</th>
-                          <th className={thBase} colSpan={5}>Decision</th>
+                          <th className={thBase} colSpan={5} style={{ textAlign: "left" }}>Discussion</th>
+                          <th className={thBase} colSpan={5} style={{ textAlign: "left" }}>Decision</th>
                         </tr>
                         <tr>
                           <td className={tdBase} colSpan={5} style={{ minHeight: 40, height: 40 }}>{dp.discussion ? `• ${dp.discussion}` : ""}</td>
@@ -1351,29 +1385,37 @@ export default function App() {
                     </table>
                   </div>
                 ))}
-                <div className="mom-section-heading mb-1">Meeting Summary:</div>
-                <ul className="mom-summary-list mb-2 ml-4 list-disc">
-                  {form.meetingSummary.split("\n").filter(Boolean).map((line, i) => (
-                    <li key={i}>{line}</li>
-                  ))}
-                </ul>
               </div>
-              <div className="mom-page-footer"><span>Electro-Mechanical Systems Engineering Technology (EMSET)</span><span>2</span></div>
+              <div className="mom-page-footer"><span>{form.footerText}</span><span>2 | P a g e</span></div>
             </div>
 
             {/* Page 3 */}
             <div className="mom-page bg-white shadow-xl rounded-lg mx-auto" style={pageStyle}>
               <PreviewHeader />
-              <div className="mom-content" style={documentStyle}>
+              <div className="mom-content mom-page-three-content" style={documentStyle}>
+                <table className="mom-table w-full border-collapse mb-4">
+                  <colgroup><col style={{ width: "100%" }} /></colgroup>
+                  <thead><tr><th className={`${thBase} mom-section-title`} style={{ textAlign: "left" }}>Meeting Summary</th></tr></thead>
+                  <tbody>
+                    <tr>
+                      <td className={tdBase} style={{ height: "17mm" }}>
+                        <ul className="mom-summary-list ml-4 list-disc">
+                          {form.meetingSummary.split("\n").filter(Boolean).map((line, i) => <li key={i}>{line}</li>)}
+                        </ul>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
                 <table className="mom-table w-full border-collapse mb-3">
                   <colgroup><col style={{ width: "100%" }} /></colgroup>
-                  <thead><tr><th className={`${thBase} text-left`}>Next Meeting</th></tr></thead>
+                  <thead><tr><th className={`${thBase} mom-section-title`} style={{ textAlign: "left" }}>Next Meeting</th></tr></thead>
                   <tbody><tr><td className={tdBase} style={{ minHeight: 28, height: 28 }}>{form.nextMeeting}</td></tr></tbody>
                 </table>
 
                 <table className="mom-table w-full border-collapse mb-3">
                   <colgroup><col style={{ width: "100%" }} /></colgroup>
-                  <thead><tr><th className={`${thBase} text-left`}>Adjournment</th></tr></thead>
+                  <thead><tr><th className={`${thBase} mom-section-title`} style={{ textAlign: "left" }}>Adjournment</th></tr></thead>
                   <tbody><tr><td className={tdBase}>{form.adjournment}</td></tr></tbody>
                 </table>
 
@@ -1383,15 +1425,12 @@ export default function App() {
                     <col style={{ width: "13%" }} /><col style={{ width: "37%" }} />
                   </colgroup>
                   <tbody>
-                    <tr><th className={thBase} colSpan={4} style={{ textAlign: "left" }}>Approval</th></tr>
+                    <tr><th className={`${thBase} mom-section-title`} colSpan={4} style={{ textAlign: "left" }}>Approval</th></tr>
                     <tr>
-                      <td className={`${tdBase} italic`} colSpan={4}>The chair of the meeting confirms with their signature that the discussions and decisions were correctly recorded.</td>
-                    </tr>
-                    <tr>
-                      <td className={labelCellBase}>Date</td>
-                      <td className={tdBase}>{form.approvalDate}</td>
                       <td className={labelCellBase}>Signature</td>
                       <td className={tdBase}></td>
+                      <td className={labelCellBase}>Date</td>
+                      <td className={tdBase}>{form.approvalDate}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1399,7 +1438,7 @@ export default function App() {
                 <table className="mom-table w-full border-collapse mb-4">
                   <colgroup><col style={{ width: "12%" }} /><col style={{ width: "88%" }} /></colgroup>
                   <thead>
-                    <tr><th className={thBase} colSpan={2} style={{ textAlign: "left" }}>Attached Documents (Appendix)</th></tr>
+                    <tr><th className={`${thBase} mom-section-title`} colSpan={2} style={{ textAlign: "left" }}>Attached Documents (Appendix)</th></tr>
                     <tr><th className={thBase}>No.</th><th className={thBase} style={{ textAlign: "left" }}>Document</th></tr>
                   </thead>
                   <tbody>
@@ -1412,9 +1451,9 @@ export default function App() {
                   </tbody>
                 </table>
 
-                <table className="mom-table w-full border-collapse">
+                <table className="mom-table w-full border-collapse mb-4">
                   <colgroup><col style={{ width: "100%" }} /></colgroup>
-                  <thead><tr><th className={thBase} style={{ textAlign: "left" }}>Distribution</th></tr></thead>
+                  <thead><tr><th className={`${thBase} mom-section-title`} style={{ textAlign: "left" }}>Distribution</th></tr></thead>
                   <tbody>
                     <tr><td className={tdBase}>{form.distribution}</td></tr>
                     {form.distributionOthers && form.distributionOthers !== "N/A" && (
@@ -1428,8 +1467,29 @@ export default function App() {
                     </tr>
                   </tbody>
                 </table>
+
+                <table className="mom-table mom-document-control w-full border-collapse">
+                  <colgroup>
+                    <col style={{ width: "20%" }} /><col style={{ width: "38%" }} />
+                    <col style={{ width: "20%" }} /><col style={{ width: "22%" }} />
+                  </colgroup>
+                  <tbody>
+                    <tr>
+                      <td className={`${labelCellBase} mom-document-control-title`}>Document Control:</td>
+                      <td className={`${tdBase} mom-document-control-title`} colSpan={3}>{form.documentControlTitle}</td>
+                    </tr>
+                    <tr>
+                      <td className={labelCellBase}>Form Owner:</td><td className={tdBase}>{form.formOwner}</td>
+                      <td className={labelCellBase}>Reviewed Date:</td><td className={tdBase}>{form.reviewedDate}</td>
+                    </tr>
+                    <tr>
+                      <td className={labelCellBase}>Last Version:</td><td className={tdBase}>{form.lastVersion}</td>
+                      <td className={labelCellBase}>Version</td><td className={tdBase}>{form.documentVersion}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-              <div className="mom-page-footer"><span>Electro-Mechanical Systems Engineering Technology (EMSET)</span><span>3</span></div>
+              <div className="mom-page-footer"><span>{form.footerText}</span><span>3 | P a g e</span></div>
             </div>
           </div>
         </div>
