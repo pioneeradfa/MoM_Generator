@@ -65,7 +65,7 @@ select:focus-visible {
 
 .mom-running-header-row {
   display: grid;
-  grid-template-columns: 48mm minmax(0, 1fr) 32mm;
+  grid-template-columns: 48mm minmax(0, 1fr) 48mm;
   align-items: center;
   min-height: 28mm;
 }
@@ -92,17 +92,6 @@ select:focus-visible {
 
 .mom-header-center > div + div {
   margin-top: 0.7mm;
-}
-
-.mom-header-program {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  color: #111827;
-  font-size: 11.5pt;
-  font-weight: 700;
-  line-height: 1.12;
-  text-align: center;
 }
 
 .mom-content {
@@ -135,12 +124,12 @@ select:focus-visible {
 
 .mom-page .mom-table th,
 .mom-page .mom-table td {
-  padding: 4px 6px;
-  line-height: 1.35;
+  padding: 6px;
+  line-height: 1.4;
   border: 1px solid #111827;
   overflow-wrap: anywhere;
   word-break: normal;
-  vertical-align: middle;
+  vertical-align: middle !important;
 }
 
 .mom-page .mom-table td {

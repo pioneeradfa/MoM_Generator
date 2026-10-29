@@ -575,7 +575,7 @@ export default function App() {
             alignment: AlignmentType.CENTER,
           },
           {
-            paragraphs: [headerTextParagraph(form.program, 24), headerTextParagraph("Program", 24)],
+            paragraphs: [headerParagraph([new TextRun({ text: "" })])],
             alignment: AlignmentType.CENTER,
           },
         ],
@@ -840,7 +840,7 @@ export default function App() {
           },
           headers: {
             default: new Header({
-              children: [makeFixedTable([26, 50, 24], headerRows, { widthPercent: 100, borderless: true })],
+              children: [makeFixedTable([25, 50, 25], headerRows, { widthPercent: 100, borderless: true })],
             }),
           },
           footers: {
@@ -910,7 +910,6 @@ export default function App() {
           <div>{semesterYear}</div>
           <div>{form.headerMeetingTitle}</div>
         </div>
-        <div className="mom-header-program"><span>{form.program}</span><span>Program</span></div>
       </div>
     </div>
   );
